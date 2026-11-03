@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/agentshield-dev/agentshield/pkg/graph"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/agentshield-dev/agentshield/pkg/graph"
 )
 
 // Contribution head statuses, derived from Retired, Ready, and SourceHealth by
@@ -191,8 +191,11 @@ func (s *Store) commitCandidate(ctx context.Context, tx pgx.Tx, current, next ma
 	if err != nil {
 		return contributionPublication{}, false, err
 	}
-	changedResources, _ := projectionChanges(current.view.Snapshot.Resources, next.view.Snapshot.Resources, func(item graph.Resource) string { return item.ID })
-	if err := enqueueChangedDeploymentRuleJobs(ctx, tx, changedResources); err != nil {
+	changedResources, removedResources := projectionChanges(current.view.Snapshot.Resources, next.view.Snapshot.Resources, func(item graph.Resource) string { return item.ID })
+	for _, resourceID := range removedResources {
+		changedResources = append(changedResources, graph.Resource{ID: resourceID})
+	}
+	if err := enqueueChangedResourceRuleJobs(ctx, tx, changedResources); err != nil {
 		return contributionPublication{}, false, err
 	}
 	if err := replaceCurrentProjection(ctx, tx, current.view.Snapshot, next.view.Snapshot, contribution.UpdatedAt, s.unresolvedRetention); err != nil {
