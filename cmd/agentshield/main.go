@@ -49,6 +49,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/spf13/pflag"
@@ -239,8 +240,8 @@ func parseOptions(args []string) (options, error) {
 		return options{}, fmt.Errorf("unexpected positional arguments: %s", strings.Join(flags.Args(), " "))
 	}
 	if strings.TrimSpace(config.aws.Region) == "" &&
-		(strings.TrimSpace(config.aws.EventsQueueURL) != "" || strings.TrimSpace(config.aws.FirehoseStreamARN) != "") {
-		return options{}, errors.New("AWS events queue and Firehose options require --aws-region")
+		(config.aws.ECS || strings.TrimSpace(config.aws.EventsQueueURL) != "" || strings.TrimSpace(config.aws.FirehoseStreamARN) != "") {
+		return options{}, errors.New("AWS ECS, events queue, and Firehose options require --aws-region")
 	}
 	if config.checkpointInterval <= 0 || config.checkpointDeltas == 0 {
 		return options{}, errors.New("contribution checkpoint interval and delta count must be positive")
@@ -834,8 +835,13 @@ func awsDiscoveryPlugin(ctx context.Context, pluginConfig awsplugin.CLIConfig) (
 			return nil, err
 		}
 	}
+	var ecsClient awsplugin.ECSAPI
+	if pluginConfig.ECS {
+		ecsClient = ecs.NewFromConfig(config)
+	}
 	plugin, err := awsplugin.New(awsplugin.Config{
-		Partition: parsed.Partition, Region: pluginConfig.Region, SourceID: sourceID, EC2: ec2.NewFromConfig(config), Subscriber: subscriber,
+		Partition: parsed.Partition, Region: pluginConfig.Region, SourceID: sourceID,
+		EC2: ec2.NewFromConfig(config), ECS: ecsClient, Subscriber: subscriber,
 		FirehoseStreamARN: pluginConfig.FirehoseStreamARN, FirehoseAccessKey: pluginConfig.FirehoseAccessKey,
 	})
 	if err != nil {

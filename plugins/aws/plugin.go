@@ -23,13 +23,14 @@ type Config struct {
 	Region            string
 	SourceID          string
 	EC2               EC2API
+	ECS               ECSAPI
 	Subscriber        EventSubscriber
 	PollInterval      time.Duration
 	FirehoseStreamARN string
 	FirehoseAccessKey string
 }
 
-// Plugin is the AWS EC2 source plugin for one partition, account, and region.
+// Plugin is the AWS source plugin for one partition, account, and region.
 type Plugin struct {
 	config Config
 }
@@ -86,7 +87,7 @@ func (p *Plugin) ResolveIdentityReference(reference string) (graph.IdentityClaim
 // per-region collections are added by [Plugin.Descriptor].
 func Descriptor() discovery.Descriptor {
 	return discovery.Descriptor{
-		ID: PluginID, Version: "0.1.0", Description: "AWS EC2 network security inventory",
+		ID: PluginID, Version: "0.1.0", Description: "AWS EC2 network security and ECS task inventory",
 		IdentitySchemes: []graph.SchemeDefinition{IdentitySchemeDefinition()},
 	}
 }
@@ -95,6 +96,9 @@ func Descriptor() discovery.Descriptor {
 func (p *Plugin) Descriptor() discovery.Descriptor {
 	descriptor := Descriptor()
 	descriptor.Publishes = []string{networkInterfacesCollection(p.config.Region), instancesCollection(p.config.Region), securityGroupsCollection(p.config.Region)}
+	if p.config.ECS != nil {
+		descriptor.Publishes = append(descriptor.Publishes, tasksCollection(p.config.Region))
+	}
 	return descriptor
 }
 
@@ -124,7 +128,7 @@ func (p *Plugin) Run(ctx context.Context, runtime discovery.Runtime) error {
 		return false, nil
 	}
 	reconcile := func() (bool, error) {
-		next, captureErr := capture(ctx, p.config.EC2, p.config.Region)
+		next, captureErr := capture(ctx, p.config.EC2, p.config.ECS, p.config.Partition, p.config.Region)
 		if captureErr != nil {
 			return retainDegraded(captureErr)
 		}
@@ -231,7 +235,15 @@ func (p *Plugin) publishChanges(ctx context.Context, runtime discovery.Runtime, 
 	}); err != nil {
 		return err
 	}
-	return publishCollection(ctx, runtime, p.config.SourceID, securityGroupsCollection(p.config.Region), previous.SecurityGroups, next.SecurityGroups, generation, observedAt, func(item SecurityGroup) (string, string, string, any) {
+	if err := publishCollection(ctx, runtime, p.config.SourceID, securityGroupsCollection(p.config.Region), previous.SecurityGroups, next.SecurityGroups, generation, observedAt, func(item SecurityGroup) (string, string, string, any) {
+		return item.ID, item.Revision, item.EventID, item
+	}); err != nil {
+		return err
+	}
+	if p.config.ECS == nil {
+		return nil
+	}
+	return publishCollection(ctx, runtime, p.config.SourceID, tasksCollection(p.config.Region), previous.Tasks, next.Tasks, generation, observedAt, func(item Task) (string, string, string, any) {
 		return item.ID, item.Revision, item.EventID, item
 	})
 }
@@ -289,6 +301,10 @@ func securityGroupsCollection(region string) string {
 
 func instancesCollection(region string) string {
 	return "aws/ec2/" + region + "/instances"
+}
+
+func tasksCollection(region string) string {
+	return "aws/ecs/" + region + "/tasks"
 }
 
 func eventID(collection, key, revision, operation string) string {

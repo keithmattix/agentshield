@@ -24,8 +24,7 @@ var resourceScheme = graph.IdentityScheme{Group: "aws.amazon.com", Version: "v1"
 
 // IdentitySchemeDefinition normalizes aws.amazon.com/v1 Resource claims: a
 // 12-digit owner account authority and a lowercased
-// <partition>/ec2/<region>/<type>/<id> key for instances, network
-// interfaces, and security groups.
+// <partition>/<service>/<region>/<type>/<id> key.
 func IdentitySchemeDefinition() graph.SchemeDefinition {
 	return graph.SchemeDefinition{
 		Scheme: resourceScheme,
@@ -38,8 +37,8 @@ func IdentitySchemeDefinition() graph.SchemeDefinition {
 			for index := range parts {
 				parts[index] = strings.ToLower(strings.TrimSpace(parts[index]))
 			}
-			validKind := parts[3] == "network-interface" && len(parts[4]) > len("eni-") && strings.HasPrefix(parts[4], "eni-") || parts[3] == "security-group" && len(parts[4]) > len("sg-") && strings.HasPrefix(parts[4], "sg-") || parts[3] == "instance" && len(parts[4]) > len("i-") && strings.HasPrefix(parts[4], "i-")
-			if !strings.HasPrefix(parts[0], "aws") || !validAWSComponent(parts[0]) || parts[1] != "ec2" || !validAWSComponent(parts[2]) || !validAWSComponent(parts[4]) || !validKind {
+			validKind := parts[1] == "ec2" && (parts[3] == "network-interface" && len(parts[4]) > len("eni-") && strings.HasPrefix(parts[4], "eni-") || parts[3] == "security-group" && len(parts[4]) > len("sg-") && strings.HasPrefix(parts[4], "sg-") || parts[3] == "instance" && len(parts[4]) > len("i-") && strings.HasPrefix(parts[4], "i-")) || parts[1] == "ecs" && parts[3] == "task"
+			if !strings.HasPrefix(parts[0], "aws") || !validAWSComponent(parts[0]) || !validAWSComponent(parts[2]) || !validAWSComponent(parts[4]) || !validKind {
 				return graph.IdentityClaim{}, errors.New("invalid aws.amazon.com/v1 Resource identity claim")
 			}
 			claim.ImmutableKey = strings.Join(parts, "/")
@@ -89,10 +88,13 @@ func Project(scope ProjectionContext, snapshot Snapshot) (ProjectionResult, erro
 	interfaces := slices.Clone(snapshot.NetworkInterfaces)
 	instances := slices.Clone(snapshot.Instances)
 	groups := slices.Clone(snapshot.SecurityGroups)
+	tasks := slices.Clone(snapshot.Tasks)
 	slices.SortFunc(interfaces, func(left, right NetworkInterface) int { return strings.Compare(left.ID, right.ID) })
 	slices.SortFunc(instances, func(left, right Instance) int { return strings.Compare(left.ID, right.ID) })
 	slices.SortFunc(groups, func(left, right SecurityGroup) int { return strings.Compare(left.ID, right.ID) })
+	slices.SortFunc(tasks, func(left, right Task) int { return strings.Compare(left.ID, right.ID) })
 	groupIndex := make(map[string]SecurityGroup, len(groups))
+	interfaceIndex := make(map[string]NetworkInterface, len(interfaces))
 	result := ProjectionResult{}
 	for _, instance := range instances {
 		if err := validateInstance(instance); err != nil {
@@ -137,6 +139,7 @@ func Project(scope ProjectionContext, snapshot Snapshot) (ProjectionResult, erro
 			return ProjectionResult{}, err
 		}
 		claim := networkInterfaceClaim(scope, item)
+		interfaceIndex[item.ID] = item
 		for index, address := range item.Addresses {
 			parsed, err := netip.ParseAddr(strings.TrimSpace(address))
 			if err != nil {
@@ -201,6 +204,44 @@ func Project(scope ProjectionContext, snapshot Snapshot) (ProjectionResult, erro
 				PluginID: PluginID, SourceID: scope.SourceID, RuleID: "aws.ec2.network-interface-exposes-address", EvidenceIDs: []string{item.EventID},
 			})
 		}
+	}
+	for _, item := range tasks {
+		if err := validateTask(item); err != nil {
+			return ProjectionResult{}, err
+		}
+		claim := taskClaim(scope, item)
+		attributes := stringAttributes(
+			"aws/ecs-task-id", item.ID, "aws/ecs-cluster-arn", item.ClusterARN,
+			"aws/ecs-task-definition-arn", item.TaskDefinitionARN, "aws/ecs-container-instance-arn", item.ContainerInstanceARN,
+			"aws/availability-zone", item.AvailabilityZone, "aws/ecs-capacity-provider", item.CapacityProviderName,
+			"aws/ecs-launch-type", item.LaunchType, "aws/desired-status", item.DesiredStatus,
+			"aws/status", item.LastStatus, "aws/health-status", item.HealthStatus,
+			"aws/ecs-isolation-mode", item.IsolationMode, "aws/ecs-attestation-policy-status", item.AttestationPolicyStatus,
+			"aws/region", scope.Region,
+		)
+		if item.Version > 0 {
+			attributes["aws/ecs-version"] = strconv.FormatInt(item.Version, 10)
+		}
+		var unresolved []string
+		for _, interfaceID := range uniqueSorted(slices.Clone(item.NetworkInterfaceIDs)) {
+			networkInterface, found := interfaceIndex[interfaceID]
+			if !found {
+				unresolved = append(unresolved, interfaceID)
+				continue
+			}
+			result.Input.Relationships = append(result.Input.Relationships, graph.RelationshipAssertion{
+				Subject: claim, Predicate: graph.PredicateBackedBy, Object: networkInterfaceClaim(scope, networkInterface), Qualifier: "network-interface",
+				PluginID: PluginID, SourceID: scope.SourceID, RuleID: "aws.ecs.task-backed-by-network-interface",
+				EvidenceIDs: []string{item.EventID, networkInterface.EventID},
+			})
+		}
+		if len(unresolved) > 0 {
+			attributes["aws/unresolved-network-interface-ids"] = projectkit.MustCanonicalJSON(unresolved)
+		}
+		result.Input.Resources = append(result.Input.Resources, graph.ResourceAssertion{
+			Claim: claim, Kind: "aws/ecs-task", DisplayName: item.ID, Attributes: attributes,
+			PluginID: PluginID, SourceID: scope.SourceID, RuleID: "aws.ecs.task", EvidenceIDs: []string{item.EventID},
+		})
 	}
 	return result, nil
 }
@@ -316,6 +357,10 @@ func instanceClaim(scope ProjectionContext, item Instance) graph.IdentityClaim {
 	return resourceClaim(scope, item.OwnerID, "instance", item.ID)
 }
 
+func taskClaim(scope ProjectionContext, item Task) graph.IdentityClaim {
+	return graph.IdentityClaim{Scheme: resourceScheme, AuthorityID: item.OwnerID, ImmutableKey: scope.Partition + "/ecs/" + scope.Region + "/task/" + item.ID}
+}
+
 // instanceClaimFromProviderID resolves aws:///<zone>/<instance-id>. Any other
 // AWS form is no match rather than an error, because one Node must not fail
 // the whole Kubernetes projection: a zone in another region belongs to another
@@ -363,6 +408,13 @@ func validateGroup(item SecurityGroup) error {
 func validateInstance(item Instance) error {
 	if strings.TrimSpace(item.ID) == "" || !validAccountID(item.OwnerID) || strings.TrimSpace(item.EventID) == "" {
 		return fmt.Errorf("AWS instance requires ID, owner account, and evidence event")
+	}
+	return nil
+}
+
+func validateTask(item Task) error {
+	if strings.TrimSpace(item.ID) == "" || !validAccountID(item.OwnerID) || strings.TrimSpace(item.ClusterARN) == "" || strings.TrimSpace(item.EventID) == "" {
+		return fmt.Errorf("AWS ECS task requires ID, owner account, cluster ARN, and evidence event")
 	}
 	return nil
 }

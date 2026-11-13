@@ -36,7 +36,7 @@ func nextPage[T any](ctx context.Context, fetch func(context.Context, ...func(*e
 	return fetch(ctx)
 }
 
-func capture(ctx context.Context, client EC2API, region string) (Snapshot, error) {
+func capture(ctx context.Context, client EC2API, ecsClient ECSAPI, partition, region string) (Snapshot, error) {
 	interfaces, err := captureNetworkInterfaces(ctx, client, region)
 	if err != nil {
 		return Snapshot{}, err
@@ -49,7 +49,11 @@ func capture(ctx context.Context, client EC2API, region string) (Snapshot, error
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return Snapshot{NetworkInterfaces: interfaces, Instances: instances, SecurityGroups: groups}, nil
+	tasks, err := captureTasks(ctx, ecsClient, partition, region)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return Snapshot{NetworkInterfaces: interfaces, Instances: instances, SecurityGroups: groups, Tasks: tasks}, nil
 }
 
 func captureInstances(ctx context.Context, client EC2API, region string) ([]Instance, error) {

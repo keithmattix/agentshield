@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentshield-dev/agentshield/pkg/discovery"
 	awsdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/agentshield-dev/agentshield/pkg/discovery"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 )
 
 func TestPluginPublishesReplacementAndRetraction(t *testing.T) {
@@ -19,7 +21,7 @@ func TestPluginPublishesReplacementAndRetraction(t *testing.T) {
 	runtime := &recordingRuntime{generation: 7, cancelAfterReplacements: 2, cancel: cancel}
 	plugin, err := New(Config{
 		Partition: "aws", Region: "us-east-1", SourceID: "aws/aws/111111111111/us-east-1",
-		EC2: client, PollInterval: time.Millisecond,
+		EC2: client, ECS: &changingECS{}, PollInterval: time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -33,23 +35,25 @@ func TestPluginPublishesReplacementAndRetraction(t *testing.T) {
 	if len(runtime.replacements) != 2 || runtime.replacements[0].Generation != 8 || runtime.replacements[1].Generation != 9 {
 		t.Fatalf("replacements = %#v", runtime.replacements)
 	}
-	if len(runtime.replacements[0].Input.Resources) != 2 || len(runtime.replacements[1].Input.Resources) != 1 {
+	if len(runtime.replacements[0].Input.Resources) != 3 || len(runtime.replacements[1].Input.Resources) != 1 {
 		t.Fatalf("resource counts = %d, %d", len(runtime.replacements[0].Input.Resources), len(runtime.replacements[1].Input.Resources))
 	}
-	var deleted bool
+	deleted := map[string]bool{}
 	for _, change := range runtime.changes {
+		if change.Operation == discovery.OperationDelete {
+			deleted[change.Key] = true
+		}
 		if change.Operation == discovery.OperationDelete && change.Key == "eni-1" {
-			deleted = true
 			if change.EventID != eventID(networkInterfacesCollection("us-east-1"), "eni-1", change.Revision, "delete") {
 				t.Fatalf("unstable delete event ID %q", change.EventID)
 			}
 		}
 	}
-	if !deleted {
-		t.Fatal("network interface omission did not publish a delete")
+	if !deleted["eni-1"] || !deleted["task-1"] {
+		t.Fatalf("omission deletes = %#v", deleted)
 	}
-	if len(runtime.ready) != 6 {
-		t.Fatalf("ready markers = %d, want 6", len(runtime.ready))
+	if len(runtime.ready) != 8 {
+		t.Fatalf("ready markers = %d, want 8", len(runtime.ready))
 	}
 	if !ordered(runtime.operations, "publish", "replace", "ready", "ready", "ready") {
 		t.Fatalf("initial operation order = %v", runtime.operations)
@@ -167,6 +171,29 @@ func TestSourceID(t *testing.T) {
 type changingEC2 struct {
 	mu    sync.Mutex
 	cycle int
+}
+
+type changingECS struct {
+	cycle int
+}
+
+func (c *changingECS) ListClusters(context.Context, *ecs.ListClustersInput, ...func(*ecs.Options)) (*ecs.ListClustersOutput, error) {
+	return &ecs.ListClustersOutput{ClusterArns: []string{"arn:aws:ecs:us-east-1:111111111111:cluster/agents"}}, nil
+}
+
+func (c *changingECS) ListTasks(context.Context, *ecs.ListTasksInput, ...func(*ecs.Options)) (*ecs.ListTasksOutput, error) {
+	c.cycle++
+	if c.cycle == 1 {
+		return &ecs.ListTasksOutput{TaskArns: []string{"arn:aws:ecs:us-east-1:111111111111:task/agents/task-1"}}, nil
+	}
+	return &ecs.ListTasksOutput{}, nil
+}
+
+func (c *changingECS) DescribeTasks(context.Context, *ecs.DescribeTasksInput, ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error) {
+	return &ecs.DescribeTasksOutput{Tasks: []ecstypes.Task{{
+		TaskArn:    awsdk.String("arn:aws:ecs:us-east-1:111111111111:task/agents/task-1"),
+		ClusterArn: awsdk.String("arn:aws:ecs:us-east-1:111111111111:cluster/agents"),
+	}}}, nil
 }
 
 func (c *changingEC2) DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {

@@ -218,7 +218,7 @@ func TestPluginCLIFlagsAreNamespacedAndCollisionFree(t *testing.T) {
 	}
 	for _, name := range []string{
 		"kubernetes-cluster-id", "istio-cluster-id", "agentgateway-cluster-id", "cilium-cluster-id",
-		"falco-cluster-id", "falco-source-id", "aws-region", "aws-firehose-stream-arn",
+		"falco-cluster-id", "falco-source-id", "aws-region", "aws-ecs", "aws-firehose-stream-arn",
 	} {
 		if flags.Lookup(name) == nil {
 			t.Errorf("expected plugin-owned flag --%s", name)
@@ -248,6 +248,7 @@ func TestParseOptionsUsesIndependentPluginClusterIDs(t *testing.T) {
 
 func TestParseOptionsRequiresAWSRegionForAWSReceivers(t *testing.T) {
 	for _, flag := range []string{
+		"--aws-ecs",
 		"--aws-events-queue-url=https://sqs.example.test/queue",
 		"--aws-firehose-stream-arn=arn:aws:firehose:us-east-1:111111111111:deliverystream/test",
 	} {

@@ -32,6 +32,27 @@ type Instance struct {
 	EventID          string `json:"-"`
 }
 
+// Task is the normalized ECS task observation.
+type Task struct {
+	ID                      string   `json:"id"`
+	OwnerID                 string   `json:"ownerId"`
+	ClusterARN              string   `json:"clusterArn"`
+	TaskDefinitionARN       string   `json:"taskDefinitionArn,omitempty"`
+	ContainerInstanceARN    string   `json:"containerInstanceArn,omitempty"`
+	AvailabilityZone        string   `json:"availabilityZone,omitempty"`
+	CapacityProviderName    string   `json:"capacityProviderName,omitempty"`
+	LaunchType              string   `json:"launchType,omitempty"`
+	DesiredStatus           string   `json:"desiredStatus,omitempty"`
+	LastStatus              string   `json:"lastStatus,omitempty"`
+	HealthStatus            string   `json:"healthStatus,omitempty"`
+	NetworkInterfaceIDs     []string `json:"networkInterfaceIds,omitempty"`
+	IsolationMode           string   `json:"isolationMode,omitempty"`
+	AttestationPolicyStatus string   `json:"attestationPolicyStatus,omitempty"`
+	Version                 int64    `json:"version,omitempty"`
+	Revision                string   `json:"-"`
+	EventID                 string   `json:"-"`
+}
+
 // SecurityGroup is the normalized security group observation with its
 // ingress and egress rules.
 type SecurityGroup struct {
@@ -57,10 +78,11 @@ type Rule struct {
 	SecurityGroupIDs []string `json:"securityGroupIds,omitempty"`
 }
 
-// Snapshot is one coherent, fully paginated read of all three EC2 APIs. The
+// Snapshot is one coherent, fully paginated read of the configured AWS APIs. The
 // projector only ever sees a complete snapshot.
 type Snapshot struct {
 	NetworkInterfaces []NetworkInterface
 	Instances         []Instance
 	SecurityGroups    []SecurityGroup
+	Tasks             []Task
 }

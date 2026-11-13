@@ -1,6 +1,6 @@
-// Package aws is a regional AWS EC2 source plugin for instances, elastic
-// network interfaces, and security groups, with optional VPC Flow Log
-// ingestion from Amazon Data Firehose.
+// Package aws is a regional AWS source plugin for EC2 instances, elastic
+// network interfaces, security groups, and optional ECS tasks, with optional
+// VPC Flow Log ingestion from Amazon Data Firehose.
 //
 // # Source and collections
 //
@@ -10,25 +10,28 @@
 // events only trigger a current-state read, so duplicates and reordering are
 // harmless. Each object is content-digested so retries keep stable event IDs,
 // and the plugin publishes the aws/ec2/<region>/network-interfaces, instances,
-// and security-groups collections.
+// security-groups, and optional aws/ecs/<region>/tasks collections. ECS task
+// observations include Nitro Sandbox isolation and attestation-policy status.
 //
 // # Identity
 //
 // Resources use the aws.amazon.com/v1 Resource scheme. The authority is each
 // resource's 12-digit owner account, not the caller account, so shared-VPC
 // resources owned by another account keep their owner's identity. Immutable
-// keys are <partition>/ec2/<region>/<type>/<id>. The source ID
+// keys are <partition>/<service>/<region>/<type>/<id>. The source ID
 // aws/<partition>/<caller-account>/<region> identifies the observer only.
 // [Plugin.ResolveIdentityReference] turns a Kubernetes Node's aws:// provider
 // ID into an instance claim so Kubernetes can assert Node backed-by instance.
 //
 // # Graph output and failure behavior
 //
-// The "inventory" contribution asserts instances, network interfaces, and
-// security groups, network interface governed-by security group, and network
-// interface exposes network destination for its current addresses, with an
-// aws-security-group-rules facet carrying typed security semantics. An initial
-// API failure prevents readiness. After a coherent publication, a failed poll
+// The "inventory" contribution asserts instances, network interfaces, security
+// groups, and ECS tasks, network interface governed-by security group, ECS task
+// backed-by network interface, and network interface exposes network destination
+// for its current addresses, with an aws-security-group-rules facet carrying
+// typed security semantics. Nitro isolation remains provider-native because the
+// graph security vocabulary has no workload-isolation or attestation domain.
+// An initial API failure prevents readiness. After a coherent publication, a failed poll
 // republishes the last coherent input once with degraded health; recovery
 // restores healthy status.
 //
