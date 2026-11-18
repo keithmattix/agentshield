@@ -219,6 +219,9 @@ func Project(scope ProjectionContext, snapshot Snapshot) (ProjectionResult, erro
 			"aws/ecs-isolation-mode", item.IsolationMode, "aws/ecs-attestation-policy-status", item.AttestationPolicyStatus,
 			"aws/region", scope.Region,
 		)
+		if strings.EqualFold(item.LaunchType, "FARGATE") || strings.EqualFold(item.CapacityProviderName, "FARGATE") || strings.EqualFold(item.CapacityProviderName, "FARGATE_SPOT") {
+			attributes["aws/ecs-isolation-boundary"] = "task"
+		}
 		if item.Version > 0 {
 			attributes["aws/ecs-version"] = strconv.FormatInt(item.Version, 10)
 		}

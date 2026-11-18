@@ -49,11 +49,11 @@ It is for platform and security engineers running Kubernetes with Istio ambient,
 ## What it does
 
 - **Discovers** your environment into one graph:
-  - Kubernetes: workloads, Pods, Services, ServiceAccounts, Nodes, RBAC, admission configuration, NetworkPolicies, Ingress, and Gateway API, through one shared informer per resource type.
+  - Kubernetes: workloads, Pods (including runtime classes used by EKS Nitro Sandboxes), Services, ServiceAccounts, Nodes, RBAC, admission configuration, NetworkPolicies, Ingress, and Gateway API, through one shared informer per resource type.
   - Istio: AuthorizationPolicy, PeerAuthentication, ambient enrollment, waypoints, ServiceEntry, VirtualService.
   - Cilium: CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, CiliumEndpoint, CiliumNode.
   - agentgateway: Gateway API resources managed by agentgateway.
-  - AWS: EC2 instances, ENIs, and Security Groups; optionally ECS tasks including Nitro Sandbox isolation status; with optional CloudTrail change events through EventBridge and SQS.
+  - AWS: EC2 instances, ENIs, and Security Groups; optionally ECS tasks including Fargate and Nitro Sandbox isolation status; with optional CloudTrail change events through EventBridge and SQS.
 - **Records where every fact came from.** Each resource has a stable identity (for example, cluster ID plus Kubernetes UID), and each fact records the plugin, rule, and observation that produced it. The graph is stored in PostgreSQL as versioned, atomically replaced contributions with an ordered change feed.
 - **Ingests traffic telemetry**: Istio waypoint access logs over OTLP/HTTP and AWS VPC Flow Logs through Firehose. Raw events go to JSONL or ClickHouse; per-minute summaries and `communicates-with` edges go into the graph.
   Istio logs need a custom `envoyOtelAls` extension provider that emits `agentshield.*` attributes; the example labels every caller as a Deployment, so traffic from other workload kinds is rejected. See [Istio telemetry](https://agent-shield.dev/docs/plugins/istio/#telemetry).

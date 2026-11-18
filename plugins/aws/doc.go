@@ -11,7 +11,8 @@
 // harmless. Each object is content-digested so retries keep stable event IDs,
 // and the plugin publishes the aws/ec2/<region>/network-interfaces, instances,
 // security-groups, and optional aws/ecs/<region>/tasks collections. ECS task
-// observations include Nitro Sandbox isolation and attestation-policy status.
+// observations include Fargate task isolation and Nitro Sandbox isolation and
+// attestation-policy status.
 //
 // # Identity
 //

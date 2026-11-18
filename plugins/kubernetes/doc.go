@@ -36,6 +36,9 @@
 // route-backends facets. Node-to-cloud-instance backed-by edges are emitted
 // only when a configured IdentityReferenceResolver (for example the AWS
 // plugin) resolves the Node's spec.providerID.
+// Pod runtimeClassName is retained as a provider-native attribute, including
+// the isolated-sandbox and confidential-sandbox selectors used by EKS Nitro
+// Sandboxes. Pod annotations are not projected into graph attributes.
 //
 // # Failure behavior
 //

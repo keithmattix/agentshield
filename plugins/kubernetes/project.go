@@ -224,6 +224,9 @@ func attributes(item *unstructured.Unstructured) map[string]string {
 	}
 	if item.GetAPIVersion() == "v1" && item.GetKind() == "Pod" {
 		if decoded, err := kubernetesapi.Pod(item); err == nil {
+			if decoded.Value.Spec.RuntimeClassName != nil && strings.TrimSpace(*decoded.Value.Spec.RuntimeClassName) != "" {
+				result["kubernetes/runtime-class"] = strings.TrimSpace(*decoded.Value.Spec.RuntimeClassName)
+			}
 			if decoded.Value.Status.PodIP != "" {
 				result["kubernetes/pod-ip"] = decoded.Value.Status.PodIP
 			}
