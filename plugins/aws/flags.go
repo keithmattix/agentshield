@@ -2,6 +2,7 @@ package aws
 
 import (
 	"os"
+	"time"
 
 	"github.com/agentshield-dev/agentshield/pkg/discovery"
 	"github.com/spf13/pflag"
@@ -11,7 +12,7 @@ import (
 type CLIConfig struct {
 	Region            string
 	ECS               bool
-	ClassifiersFile   string
+	PollInterval      time.Duration
 	EventsQueueURL    string
 	FirehoseStreamARN string
 	FirehoseAccessKey string
@@ -22,7 +23,7 @@ func (config *CLIConfig) RegisterFlags(flags *pflag.FlagSet) error {
 	return discovery.RegisterPluginFlags(flags, PluginID, func(pluginFlags *discovery.PluginFlags) {
 		pluginFlags.StringVar(&config.Region, "region", "", "enable AWS EC2 discovery in this region")
 		pluginFlags.BoolVar(&config.ECS, "ecs", false, "enable ECS task discovery")
-		pluginFlags.StringVar(&config.ClassifiersFile, "classifiers-file", "", "classify ECS tasks with CEL rules from this YAML file")
+		pluginFlags.DurationVar(&config.PollInterval, "poll-interval", defaultPollInterval, "AWS inventory polling interval")
 		pluginFlags.StringVar(&config.EventsQueueURL, "events-queue-url", "", "SQS queue receiving EventBridge CloudTrail events")
 		pluginFlags.StringVar(&config.FirehoseStreamARN, "firehose-stream-arn", "", "enable VPC Flow Log ingestion from this Firehose stream")
 		pluginFlags.StringVar(&config.FirehoseAccessKey, "firehose-access-key", os.Getenv("AGENTSHIELD_AWS_FIREHOSE_ACCESS_KEY"), "Firehose shared key; defaults to AGENTSHIELD_AWS_FIREHOSE_ACCESS_KEY")

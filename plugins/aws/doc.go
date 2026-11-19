@@ -13,6 +13,15 @@
 // security-groups, and optional aws/ecs/<region>/tasks collections. ECS task
 // observations include Nitro Sandbox isolation and attestation-policy status.
 //
+// # Credentials
+//
+// The host uses the AWS SDK default credential chain. For AgentShield running
+// outside AWS, use IAM Roles Anywhere with aws_signing_helper through the
+// shared-config credential_process provider so the SDK receives renewable
+// temporary credentials. Protect the X.509 private key and shared config as
+// secrets and grant the role only the discovery permissions AgentShield needs.
+// See https://docs.aws.amazon.com/sdkref/latest/guide/access-rolesanywhere.html.
+//
 // # Identity
 //
 // Resources use the aws.amazon.com/v1 Resource scheme. The authority is each

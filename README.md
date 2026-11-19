@@ -64,7 +64,7 @@ It is for platform and security engineers running Kubernetes with Istio ambient,
 
 ### Classifying ECS workloads for isolation
 
-When ECS discovery is enabled, `--aws-classifiers-file` applies named CEL rules to task tags. Rules under one classification are OR'd together, and AgentShield uses the resolved classification plus graph context to decide whether to recommend isolation. Users do not select a provider mechanism or remediation intent.
+`--classifiers-file` applies named CEL rules to provider metadata. Kubernetes resources expose labels and annotations; AWS ECS tasks expose tags. Rules under one classification are OR'd together, and AgentShield uses the resolved classification plus graph context to decide whether to recommend isolation. Users do not select a provider mechanism or remediation intent.
 
 ```yaml
 classifiers:
@@ -84,7 +84,7 @@ Detection itself never calls a model. It runs whenever one of the two model-call
 
 | Flag | Default | Calls a model | What it adds |
 | --- | --- | --- | --- |
-| `--agentic-investigation` | off | at most once per admitted investigation | A model agent investigates built-in novelty signals (new communication paths, exposure, lost governance) and may promote findings. Runs in its own sampled queue. Requires an OpenAI Responses-compatible endpoint. |
+| `--agentic-investigation` | off, with sampling at `0` | at most once per admitted investigation | A model agent investigates built-in novelty signals (new communication paths, exposure, lost governance) and may promote findings. This whole-graph path requires both the flag and a nonzero `--agentic-investigation-sample-rate`. |
 | `--resource-rule-authoring` | off | once per bounded resource context revision | A model agent drafts detection rules for resources opted in by their source plugin, after `--resource-rule-stabilization-window` (default 6h). Kubernetes resources and AWS ECS tasks currently supply bounded context. Drafts run in shadow mode until an operator approves individual rules. |
 
 When detection runs, a match of an active rule (an operator-activated CEL rule or an approved Resource rule) becomes a finding directly, with no model call. Built-in novelty signals become findings only through agentic investigation, which records a finding only when the model's answer passes validation: it must cite facts and evidence the graph returned, including at least one medium-or-higher-risk signal. Agentic investigation drains its own durable queue, so a slow or failing model never delays detection. Batching, sampling, deduplication, and an hourly budget bound its spend; see [Change feed and reasoning](https://agent-shield.dev/docs/architecture/change-feed-and-reasoning/#the-investigation-queue).

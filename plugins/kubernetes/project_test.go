@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/discovery"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,6 +18,24 @@ type identityResolverFunc func(string) (graph.IdentityClaim, bool, error)
 
 func (resolve identityResolverFunc) ResolveIdentityReference(reference string) (graph.IdentityClaim, bool, error) {
 	return resolve(reference)
+}
+
+func TestProjectClassifiesKubernetesMetadata(t *testing.T) {
+	classifiers, err := classification.New(classification.Config{Classifiers: map[string][]classification.Rule{
+		classification.SensitiveData: {{Name: "sensitive-workload", Match: `resource.metadata.labels["data"] == "sensitive" || resource.metadata.annotations["data"] == "sensitive"`}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployment := testObject("apps/v1", "Deployment", "payments", "api", "deployment", nil)
+	deployment.SetLabels(map[string]string{"data": "sensitive"})
+	input, err := projectWithIdentityResolvers("cluster", "cluster", "source", []*unstructured.Unstructured{deployment}, nil, classifiers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(input.Resources) != 1 || input.Resources[0].Attributes[classification.AttributePrefix+classification.SensitiveData] != "true" {
+		t.Fatalf("classified resources = %#v", input.Resources)
+	}
 }
 
 func TestProjectCollapsesReplicaSetsAndExcludesIstioResources(t *testing.T) {
@@ -70,7 +89,7 @@ func TestProjectPodRunsOnObservedNode(t *testing.T) {
 
 	input, err := projectWithIdentityResolvers("cluster", "cluster", "source", []*unstructured.Unstructured{pod, node}, []discovery.IdentityReferenceResolver{identityResolverFunc(func(providerID string) (graph.IdentityClaim, bool, error) {
 		return backend, providerID == "aws:///us-east-1a/i-123", nil
-	})})
+	})}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

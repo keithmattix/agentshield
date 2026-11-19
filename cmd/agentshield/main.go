@@ -89,6 +89,7 @@ type options struct {
 	cilium                    ciliumplugin.CLIConfig
 	falco                     falcoplugin.CLIConfig
 	aws                       awsplugin.CLIConfig
+	classifiersFile           string
 	modelEndpoint             string
 	modelAPIKey               string
 	modelProviderName         string
@@ -204,6 +205,7 @@ func parseOptions(args []string) (options, error) {
 	flags.StringVar(&config.clickHouseTable, "clickhouse-table", "telemetry_events", "ClickHouse raw telemetry table")
 	flags.StringVar(&config.clickHouseUsername, "clickhouse-username", "default", "ClickHouse user")
 	flags.BoolVar(&config.disableDiscovery, "disable-discovery", false, "serve persisted/replayed state without live discovery")
+	flags.StringVar(&config.classifiersFile, "classifiers-file", "", "classify graph resources with typed CEL rules from this YAML file")
 	flags.StringVar(&config.modelEndpoint, "model-endpoint", os.Getenv("AGENTSHIELD_MODEL_ENDPOINT"), "model API base endpoint for the model-calling features --agentic-investigation and --resource-rule-authoring")
 	flags.StringVar(&config.modelAPIKey, "model-api-key", "", "model API key; defaults to AGENTSHIELD_MODEL_API_KEY or the selected provider's API key")
 	flags.StringVar(&config.modelProviderName, "model-provider", "openai", "model API provider: openai or anthropic. --agentic-investigation requires openai (the Responses API)")
@@ -216,7 +218,7 @@ func parseOptions(args []string) (options, error) {
 	flags.BoolVar(&config.agenticInvestigation, "agentic-investigation", envBool("AGENTSHIELD_AGENTIC_INVESTIGATION", false), "investigate built-in novelty signals with a model agent that may promote findings; calls --model-endpoint (OpenAI Responses API) at most once per admitted investigation job")
 	flags.StringVar(&config.investigationRetrieval, "agentic-investigation-retrieval", envString("AGENTSHIELD_AGENTIC_INVESTIGATION_RETRIEVAL", reasoning.RetrievalModelSelected), "agentic investigation context retrieval: model_selected or deterministic")
 	flags.DurationVar(&config.investigationBatchWindow, "agentic-investigation-batch-window", 30*time.Second, "how long a queued investigation waits so later change windows that share a resource join it")
-	flags.Float64Var(&config.investigationSampleRate, "agentic-investigation-sample-rate", 1, "fraction of medium-risk investigations run (0-1); high and critical always run")
+	flags.Float64Var(&config.investigationSampleRate, "agentic-investigation-sample-rate", 0, "fraction of investigations run (0-1); 0 disables agentic investigation")
 	flags.IntVar(&config.investigationMaxPerHour, "agentic-investigation-max-per-hour", 0, "maximum investigations started in any trailing hour; 0 is unlimited. Over budget, medium-risk work is skipped and high-risk work waits")
 	flags.DurationVar(&config.investigationDedupWindow, "agentic-investigation-dedup-window", time.Hour, "skip an investigation whose signal pattern was already investigated within this window; 0 disables")
 	flags.IntVar(&config.investigationMaxAttempts, "agentic-investigation-max-attempts", 5, "failed investigation attempts before a queued investigation fails permanently")
@@ -694,16 +696,24 @@ func initialSnapshot(view state.GraphView, err error) (graph.Snapshot, error) {
 }
 
 func discoveryPlugins(ctx context.Context, config options) ([]discovery.Plugin, error) {
+	var classifiers *classification.Engine
+	var err error
+	if config.classifiersFile != "" {
+		classifiers, err = classification.LoadFile(config.classifiersFile)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var plugins []discovery.Plugin
 	if config.aws.Region != "" {
-		awsDiscovery, err := awsDiscoveryPlugin(ctx, config.aws)
+		awsDiscovery, err := awsDiscoveryPlugin(ctx, config.aws, classifiers)
 		if err != nil {
 			return nil, err
 		}
 		plugins = append(plugins, awsDiscovery)
 	}
 	if !config.kubernetes.Disabled {
-		kubernetesPlugins, err := kubernetesDiscoveryPlugins(config, discovery.IdentityReferenceResolvers(plugins...))
+		kubernetesPlugins, err := kubernetesDiscoveryPlugins(config, discovery.IdentityReferenceResolvers(plugins...), classifiers)
 		if err != nil {
 			return nil, err
 		}
@@ -715,7 +725,7 @@ func discoveryPlugins(ctx context.Context, config options) ([]discovery.Plugin, 
 	return plugins, nil
 }
 
-func kubernetesDiscoveryPlugins(config options, identityResolvers []discovery.IdentityReferenceResolver) ([]discovery.Plugin, error) {
+func kubernetesDiscoveryPlugins(config options, identityResolvers []discovery.IdentityReferenceResolver, classifiers *classification.Engine) ([]discovery.Plugin, error) {
 	var restConfig *rest.Config
 	var err error
 	if config.kubernetes.Kubeconfig == "" && os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
@@ -756,6 +766,7 @@ func kubernetesDiscoveryPlugins(config options, identityResolvers []discovery.Id
 		ClusterID: config.kubernetes.ClusterID, NetworkID: config.kubernetes.NetworkID, SourceID: config.kubernetes.SourceID,
 		Dynamic: dynamicClient, Actions: actionTransport, Discovery: discoveryClient, Resources: kubernetesplugin.ResourceRequirements(consumerPlugins...),
 		IdentityResolvers: identityResolvers,
+		Classifiers:       classifiers,
 	})
 	if err != nil {
 		return nil, err
@@ -809,7 +820,7 @@ func kubernetesConsumerPlugins(config options, actions kubernetesplugin.WriteTra
 	return []discovery.Plugin{istio, agentgateway, cilium, falco}, nil
 }
 
-func awsDiscoveryPlugin(ctx context.Context, pluginConfig awsplugin.CLIConfig) (discovery.Plugin, error) {
+func awsDiscoveryPlugin(ctx context.Context, pluginConfig awsplugin.CLIConfig, classifiers *classification.Engine) (discovery.Plugin, error) {
 	config, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(pluginConfig.Region))
 	if err != nil {
 		return nil, fmt.Errorf("load AWS SDK config: %w", err)
@@ -837,22 +848,12 @@ func awsDiscoveryPlugin(ctx context.Context, pluginConfig awsplugin.CLIConfig) (
 		}
 	}
 	var ecsClient awsplugin.ECSAPI
-	var classifiers *classification.Engine
-	if pluginConfig.ClassifiersFile != "" && !pluginConfig.ECS {
-		return nil, errors.New("AWS classifiers require ECS discovery")
-	}
 	if pluginConfig.ECS {
 		ecsClient = ecs.NewFromConfig(config)
-		if pluginConfig.ClassifiersFile != "" {
-			classifiers, err = classification.LoadFile(pluginConfig.ClassifiersFile)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
 	plugin, err := awsplugin.New(awsplugin.Config{
 		Partition: parsed.Partition, Region: pluginConfig.Region, SourceID: sourceID,
-		EC2: ec2.NewFromConfig(config), ECS: ecsClient, Classifiers: classifiers, Subscriber: subscriber,
+		EC2: ec2.NewFromConfig(config), ECS: ecsClient, Classifiers: classifiers, Subscriber: subscriber, PollInterval: pluginConfig.PollInterval,
 		FirehoseStreamARN: pluginConfig.FirehoseStreamARN, FirehoseAccessKey: pluginConfig.FirehoseAccessKey,
 	})
 	if err != nil {

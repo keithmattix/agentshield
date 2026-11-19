@@ -39,6 +39,24 @@ discovery.<plugin>.clusterID=...`; plugins that must refer to the same
 Kubernetes object need the same stable cluster authority. Do not change an
 authority ID for a database that already contains graph data.
 
+AWS discovery is disabled until `discovery.aws.region` is set. Set
+`discovery.aws.ecs.enabled=true` to include ECS tasks. The inventory poll interval
+defaults to five minutes and can be changed with `discovery.aws.pollInterval`.
+Set `classifiers.existingConfigMap` to load the same typed CEL classifiers for
+Kubernetes labels and annotations and AWS ECS tags.
+
+The Kubernetes source ID and cluster ID are inherited by Istio, AgentGateway,
+Cilium, and Falco unless their plugin-specific override is set.
+
+AgentShield uses the AWS SDK default credential chain. For a cluster outside
+AWS, prefer [IAM Roles Anywhere](https://docs.aws.amazon.com/sdkref/latest/guide/access-rolesanywhere.html)
+with `aws_signing_helper` configured as `credential_process`; the SDK reruns the
+helper to refresh temporary credentials. Mount the helper, shared AWS config,
+certificate, and private key read-only, and protect the config and private key
+as Kubernetes Secrets. Use a least-privilege IAM role and do not copy an SSO
+session or long-lived access keys into the Pod. EKS deployments may instead use
+[EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html).
+
 ## PostgreSQL
 
 Use a dedicated database for each AgentShield process. PostgreSQL 16 is used

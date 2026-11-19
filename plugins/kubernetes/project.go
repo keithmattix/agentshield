@@ -1,10 +1,12 @@
 package kubernetes
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/discovery"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 	"github.com/agentshield-dev/agentshield/plugins/internal/projectkit"
@@ -47,20 +49,20 @@ func Project(clusterID, sourceID string, objects []*unstructured.Unstructured) (
 
 // ProjectWithNetworkID is [Project] with an explicit network ID.
 func ProjectWithNetworkID(clusterID, networkID, sourceID string, objects []*unstructured.Unstructured) (graph.Input, error) {
-	return projectWithIdentityResolvers(clusterID, networkID, sourceID, objects, nil)
+	return projectWithIdentityResolvers(clusterID, networkID, sourceID, objects, nil, nil)
 }
 
-func projectWithIdentityResolvers(clusterID, networkID, sourceID string, objects []*unstructured.Unstructured, resolvers []discovery.IdentityReferenceResolver) (graph.Input, error) {
+func projectWithIdentityResolvers(clusterID, networkID, sourceID string, objects []*unstructured.Unstructured, resolvers []discovery.IdentityReferenceResolver, classifiers *classification.Engine) (graph.Input, error) {
 	if strings.TrimSpace(clusterID) == "" || strings.TrimSpace(networkID) == "" || strings.TrimSpace(sourceID) == "" {
 		return graph.Input{}, errors.New("cluster, network, and source IDs are required")
 	}
 	index := buildObjectIndex(objects)
 	// Partial API discovery never enters the object collection, so either kind proves
 	// that replay came from the coherently selected Gateway API capability.
-	return projectSnapshot(clusterID, networkID, sourceID, index, index.observedGateway || index.observedHTTPRoute, resolvers)
+	return projectSnapshot(clusterID, networkID, sourceID, index, index.observedGateway || index.observedHTTPRoute, resolvers, classifiers)
 }
 
-func projectSnapshot(clusterID, networkID, sourceID string, index objectIndex, gatewayCovered bool, resolvers []discovery.IdentityReferenceResolver) (graph.Input, error) {
+func projectSnapshot(clusterID, networkID, sourceID string, index objectIndex, gatewayCovered bool, resolvers []discovery.IdentityReferenceResolver, classifiers *classification.Engine) (graph.Input, error) {
 	var input graph.Input
 	for _, item := range index.items {
 		if !includeGraphResource(item) || isGatewayResource(item) && !gatewayCovered {
@@ -69,6 +71,16 @@ func projectSnapshot(clusterID, networkID, sourceID string, index objectIndex, g
 		itemAttributes, err := projectionAttributes(item, index)
 		if err != nil {
 			return graph.Input{}, err
+		}
+		classifications, err := classifiers.Classify(context.Background(), &classification.Resource{
+			Kind: "kubernetes/" + strings.ToLower(item.GetKind()), Name: item.GetName(), Namespace: item.GetNamespace(),
+			Metadata: &classification.Metadata{Labels: item.GetLabels(), Annotations: item.GetAnnotations()},
+		})
+		if err != nil {
+			return graph.Input{}, fmt.Errorf("classify %s %s/%s: %w", item.GetKind(), item.GetNamespace(), item.GetName(), err)
+		}
+		for _, value := range classifications {
+			itemAttributes[classification.AttributePrefix+value] = "true"
 		}
 		if isAuthorableResource(item) {
 			if err := addResourceAuthoringContext(itemAttributes, resourceAuthoringSourceRevision(item)); err != nil {

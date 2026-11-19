@@ -335,10 +335,10 @@ func retainPresentAnchors(signals []detector.InvestigationSignal, checkpoint sta
 	return result
 }
 
-// SamplingPolicy bounds agentic investigation spend. High and critical requests
-// bypass rate sampling and wait, rather than drop, when the hourly budget is spent.
+// SamplingPolicy bounds agentic investigation spend. A zero rate disables it;
+// otherwise high and critical requests bypass rate sampling.
 type SamplingPolicy struct {
-	// SampleRate is the fraction of medium-risk requests investigated, from 0 to 1.
+	// SampleRate is the fraction of medium-risk requests investigated, from 0 to 1. Zero disables all investigations.
 	SampleRate float64
 	// MaxPerHour caps investigations started in any trailing hour; zero is unlimited.
 	MaxPerHour int
@@ -349,7 +349,7 @@ type SamplingPolicy struct {
 }
 
 func DefaultSamplingPolicy() SamplingPolicy {
-	return SamplingPolicy{SampleRate: 1, DedupWindow: time.Hour, BudgetDeferral: time.Minute}
+	return SamplingPolicy{DedupWindow: time.Hour, BudgetDeferral: time.Minute}
 }
 
 func (policy SamplingPolicy) validate() error {
@@ -365,11 +365,11 @@ func (policy SamplingPolicy) validate() error {
 // Sampled reports whether rate sampling keeps a request. The decision is a
 // deterministic function of the request's sample key.
 func (policy SamplingPolicy) Sampled(request InvestigationRequest) bool {
-	if request.Risk().Rank() >= detector.RiskHigh.Rank() || policy.SampleRate >= 1 {
-		return true
-	}
 	if policy.SampleRate <= 0 {
 		return false
+	}
+	if request.Risk().Rank() >= detector.RiskHigh.Rank() || policy.SampleRate >= 1 {
+		return true
 	}
 	key, err := hex.DecodeString(request.SampleKey())
 	if err != nil || len(key) < 8 {

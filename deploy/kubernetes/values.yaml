@@ -30,25 +30,32 @@ discovery:
     networkID: ""
     sourceID: kubernetes/example-cluster
   istio:
-    clusterID: example-cluster
+    clusterID: ""
     networkID: ""
-    sourceID: kubernetes/example-cluster
+    sourceID: ""
     rootNamespace: istio-system
   agentgateway:
-    clusterID: example-cluster
-    sourceID: kubernetes/example-cluster
+    clusterID: ""
+    sourceID: ""
   cilium:
-    clusterID: example-cluster
-    sourceID: kubernetes/example-cluster
+    clusterID: ""
+    sourceID: ""
   falco:
-    clusterID: example-cluster
-    sourceID: kubernetes/example-cluster
+    clusterID: ""
+    sourceID: ""
   aws:
     region: ""
+    ecs:
+      enabled: false
+    pollInterval: 5m
     eventsQueueURL: ""
     firehoseStreamARN: ""
     firehoseExistingSecret: ""
     firehoseSecretKey: access-key
+
+classifiers:
+  existingConfigMap: ""
+  key: classifiers.yaml
 
 telemetry:
   jsonlPath: /var/lib/agentshield/telemetry.jsonl

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
 )
@@ -41,6 +42,11 @@ func (flags *PluginFlags) StringVar(target *string, name, value, usage string) {
 // BoolVar adds a boolean flag below the plugin namespace.
 func (flags *PluginFlags) BoolVar(target *bool, name string, value bool, usage string) {
 	flags.add(name, func(fullName string) { flags.flags.BoolVar(target, fullName, value, usage) })
+}
+
+// DurationVar adds a duration flag below the plugin namespace.
+func (flags *PluginFlags) DurationVar(target *time.Duration, name string, value time.Duration, usage string) {
+	flags.add(name, func(fullName string) { flags.flags.DurationVar(target, fullName, value, usage) })
 }
 
 func (flags *PluginFlags) add(name string, register func(string)) {

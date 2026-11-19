@@ -44,6 +44,16 @@ func TestCaptureECSTasksDoesNotRequestTagsWithoutClassifiers(t *testing.T) {
 	}
 }
 
+func TestCaptureManagedInstancesTaskDefaultsToSharedIsolation(t *testing.T) {
+	tasks, err := captureTasks(context.Background(), defaultSharedECS{fakeECS{}}, nil, "aws", "us-east-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].IsolationMode != string(ecstypes.IsolationModeShared) {
+		t.Fatalf("tasks = %#v, want one SHARED task", tasks)
+	}
+}
+
 func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 	result, err := Project(ProjectionContext{Partition: "aws", Region: "us-east-1", SourceID: "source"}, Snapshot{
 		NetworkInterfaces: []NetworkInterface{{ID: "eni-1", OwnerID: "111111111111", EventID: "eni-event"}},
@@ -87,12 +97,23 @@ func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 type fakeECS struct{}
 
 type tagsForbiddenECS struct{ fakeECS }
+type defaultSharedECS struct{ fakeECS }
 
 func (client tagsForbiddenECS) DescribeTasks(ctx context.Context, input *ecs.DescribeTasksInput, options ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error) {
 	if len(input.Include) != 0 {
 		return nil, context.Canceled
 	}
 	return client.fakeECS.DescribeTasks(ctx, input, options...)
+}
+
+func (client defaultSharedECS) DescribeTasks(ctx context.Context, input *ecs.DescribeTasksInput, options ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error) {
+	output, err := client.fakeECS.DescribeTasks(ctx, input, options...)
+	if err != nil {
+		return nil, err
+	}
+	output.Tasks[0].LaunchType = ecstypes.LaunchTypeManagedInstances
+	output.Tasks[0].TrustedExecutionSummary = nil
+	return output, nil
 }
 
 func (fakeECS) ListClusters(context.Context, *ecs.ListClustersInput, ...func(*ecs.Options)) (*ecs.ListClustersOutput, error) {

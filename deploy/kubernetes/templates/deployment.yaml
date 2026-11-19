@@ -38,15 +38,15 @@ spec:
             - --listen=0.0.0.0:8088
             - {{ printf "--kubernetes-cluster-id=%s" .Values.discovery.kubernetes.clusterID | quote }}
             - {{ printf "--kubernetes-source-id=%s" .Values.discovery.kubernetes.sourceID | quote }}
-            - {{ printf "--istio-cluster-id=%s" .Values.discovery.istio.clusterID | quote }}
-            - {{ printf "--istio-source-id=%s" .Values.discovery.istio.sourceID | quote }}
+            - {{ printf "--istio-cluster-id=%s" (default .Values.discovery.kubernetes.clusterID .Values.discovery.istio.clusterID) | quote }}
+            - {{ printf "--istio-source-id=%s" (default .Values.discovery.kubernetes.sourceID .Values.discovery.istio.sourceID) | quote }}
             - {{ printf "--istio-root-namespace=%s" .Values.discovery.istio.rootNamespace | quote }}
-            - {{ printf "--agentgateway-cluster-id=%s" .Values.discovery.agentgateway.clusterID | quote }}
-            - {{ printf "--agentgateway-source-id=%s" .Values.discovery.agentgateway.sourceID | quote }}
-            - {{ printf "--cilium-cluster-id=%s" .Values.discovery.cilium.clusterID | quote }}
-            - {{ printf "--cilium-source-id=%s" .Values.discovery.cilium.sourceID | quote }}
-            - {{ printf "--falco-cluster-id=%s" .Values.discovery.falco.clusterID | quote }}
-            - {{ printf "--falco-source-id=%s" .Values.discovery.falco.sourceID | quote }}
+            - {{ printf "--agentgateway-cluster-id=%s" (default .Values.discovery.kubernetes.clusterID .Values.discovery.agentgateway.clusterID) | quote }}
+            - {{ printf "--agentgateway-source-id=%s" (default .Values.discovery.kubernetes.sourceID .Values.discovery.agentgateway.sourceID) | quote }}
+            - {{ printf "--cilium-cluster-id=%s" (default .Values.discovery.kubernetes.clusterID .Values.discovery.cilium.clusterID) | quote }}
+            - {{ printf "--cilium-source-id=%s" (default .Values.discovery.kubernetes.sourceID .Values.discovery.cilium.sourceID) | quote }}
+            - {{ printf "--falco-cluster-id=%s" (default .Values.discovery.kubernetes.clusterID .Values.discovery.falco.clusterID) | quote }}
+            - {{ printf "--falco-source-id=%s" (default .Values.discovery.kubernetes.sourceID .Values.discovery.falco.sourceID) | quote }}
             - {{ printf "--telemetry-jsonl=%s" .Values.telemetry.jsonlPath | quote }}
             {{- if .Values.discovery.kubernetes.networkID }}
             - {{ printf "--kubernetes-network-id=%s" .Values.discovery.kubernetes.networkID | quote }}
@@ -62,6 +62,13 @@ spec:
             {{- end }}
             {{- if .Values.discovery.aws.region }}
             - {{ printf "--aws-region=%s" .Values.discovery.aws.region | quote }}
+            - {{ printf "--aws-poll-interval=%s" .Values.discovery.aws.pollInterval | quote }}
+            {{- end }}
+            {{- if .Values.discovery.aws.ecs.enabled }}
+            - --aws-ecs
+            {{- end }}
+            {{- if .Values.classifiers.existingConfigMap }}
+            - --classifiers-file=/etc/agentshield-classifiers/classifiers.yaml
             {{- end }}
             {{- if .Values.discovery.aws.eventsQueueURL }}
             - {{ printf "--aws-events-queue-url=%s" .Values.discovery.aws.eventsQueueURL | quote }}
@@ -143,7 +150,20 @@ spec:
           volumeMounts:
             - name: telemetry
               mountPath: {{ dir .Values.telemetry.jsonlPath }}
+            {{- if .Values.classifiers.existingConfigMap }}
+            - name: classifiers
+              mountPath: /etc/agentshield-classifiers
+              readOnly: true
+            {{- end }}
       volumes:
+        {{- if .Values.classifiers.existingConfigMap }}
+        - name: classifiers
+          configMap:
+            name: {{ .Values.classifiers.existingConfigMap }}
+            items:
+              - key: {{ .Values.classifiers.key }}
+                path: classifiers.yaml
+        {{- end }}
         - name: telemetry
           emptyDir:
             sizeLimit: {{ .Values.telemetry.emptyDirSizeLimit }}

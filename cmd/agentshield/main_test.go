@@ -218,7 +218,7 @@ func TestPluginCLIFlagsAreNamespacedAndCollisionFree(t *testing.T) {
 	}
 	for _, name := range []string{
 		"kubernetes-cluster-id", "istio-cluster-id", "agentgateway-cluster-id", "cilium-cluster-id",
-		"falco-cluster-id", "falco-source-id", "aws-region", "aws-ecs", "aws-firehose-stream-arn",
+		"falco-cluster-id", "falco-source-id", "aws-region", "aws-ecs", "aws-poll-interval", "aws-firehose-stream-arn",
 	} {
 		if flags.Lookup(name) == nil {
 			t.Errorf("expected plugin-owned flag --%s", name)
@@ -255,6 +255,16 @@ func TestParseOptionsRequiresAWSRegionForAWSReceivers(t *testing.T) {
 		if _, err := parseOptions([]string{flag}); err == nil || !strings.Contains(err.Error(), "--aws-region") {
 			t.Errorf("parseOptions(%q) error = %v, want an --aws-region requirement", flag, err)
 		}
+	}
+}
+
+func TestParseOptionsReadsAWSPollInterval(t *testing.T) {
+	config, err := parseOptions([]string{"--aws-poll-interval=30s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.aws.PollInterval != 30*time.Second {
+		t.Fatalf("AWS poll interval = %s, want 30s", config.aws.PollInterval)
 	}
 }
 

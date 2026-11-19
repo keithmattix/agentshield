@@ -88,7 +88,7 @@ func TestInvestigationRequestScopesIdentifiesAndMerges(t *testing.T) {
 	}
 }
 
-func TestSamplingPolicyIsDeterministicAndSparesHighRisk(t *testing.T) {
+func TestSamplingPolicyIsDeterministicAndZeroDisablesInvestigation(t *testing.T) {
 	policy := SamplingPolicy{SampleRate: 0.25}
 	sampled := 0
 	for index := range 2000 {
@@ -105,8 +105,8 @@ func TestSamplingPolicyIsDeterministicAndSparesHighRisk(t *testing.T) {
 		t.Fatalf("sampled %d of 2000 at rate 0.25", sampled)
 	}
 	high := InvestigationRequest{Signals: []detector.InvestigationSignal{novelty("high", detector.RiskHigh, "a")}}
-	if !(SamplingPolicy{SampleRate: 0}).Sampled(high) {
-		t.Fatal("high-risk request was sampled out")
+	if (SamplingPolicy{SampleRate: 0}).Sampled(high) {
+		t.Fatal("rate zero kept a high-risk request")
 	}
 	if (SamplingPolicy{SampleRate: 0}).Sampled(InvestigationRequest{Signals: []detector.InvestigationSignal{novelty("m", detector.RiskMedium, "a")}}) {
 		t.Fatal("rate zero kept a medium-risk request")
@@ -257,6 +257,7 @@ func TestInvestigationWorkerSamplesAdmitsInvestigatesAndReconciles(t *testing.T)
 	if err := worker.Process(ctx, queuedJob(t, 2, request("medium", detector.RiskMedium, "checkout"), 0, false)); err != nil || store.skipped[2] != InvestigationSkipSampled || store.admissions != 0 {
 		t.Fatalf("sampled job err=%v skipped=%v admissions=%d", err, store.skipped, store.admissions)
 	}
+	worker.config.Sampling.SampleRate = 1
 	store.admission = state.InvestigationDuplicate
 	if err := worker.Process(ctx, queuedJob(t, 3, request("dup", detector.RiskHigh, "checkout"), 0, false)); err != nil || calls != 0 || store.admissions != 1 {
 		t.Fatalf("duplicate job err=%v calls=%d admissions=%d", err, calls, store.admissions)
@@ -295,7 +296,9 @@ func TestInvestigationWorkerRetriesModelFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := NewInvestigationWorker(store, investigator, InvestigationWorkerConfig{ID: "worker/test", MaxAttempts: 2, Sampling: DefaultSamplingPolicy()})
+	policy := DefaultSamplingPolicy()
+	policy.SampleRate = 1
+	worker, err := NewInvestigationWorker(store, investigator, InvestigationWorkerConfig{ID: "worker/test", MaxAttempts: 2, Sampling: policy})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +355,9 @@ func TestInvestigationWorkerEndsPermanentFailuresPanicsAndSlowRuns(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			worker, err := NewInvestigationWorker(store, investigator, InvestigationWorkerConfig{ID: "worker/test", MaxAttempts: 5, JobTimeout: 20 * time.Millisecond, Sampling: DefaultSamplingPolicy()})
+			policy := DefaultSamplingPolicy()
+			policy.SampleRate = 1
+			worker, err := NewInvestigationWorker(store, investigator, InvestigationWorkerConfig{ID: "worker/test", MaxAttempts: 5, JobTimeout: 20 * time.Millisecond, Sampling: policy})
 			if err != nil {
 				t.Fatal(err)
 			}

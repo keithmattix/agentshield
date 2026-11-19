@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	agentshield "github.com/agentshield-dev/agentshield/pkg/discovery"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 	"github.com/agentshield-dev/agentshield/plugins/internal/projectkit"
@@ -38,6 +39,7 @@ type Config struct {
 	Resync            time.Duration
 	Resources         []ResourceRequirement
 	IdentityResolvers []agentshield.IdentityReferenceResolver
+	Classifiers       *classification.Engine
 }
 
 // Plugin is the Kubernetes source, inventory projection, and remediation
@@ -283,7 +285,7 @@ func (p *Plugin) reconcile(ctx context.Context, runtime agentshield.Runtime, wat
 		}
 	}
 	index := buildObjectIndex(objects)
-	input, err := projectSnapshot(p.config.ClusterID, p.config.NetworkID, p.config.SourceID, index, capabilityCovered(coverage, "gateway-api-v1"), p.config.IdentityResolvers)
+	input, err := projectSnapshot(p.config.ClusterID, p.config.NetworkID, p.config.SourceID, index, capabilityCovered(coverage, "gateway-api-v1"), p.config.IdentityResolvers, p.config.Classifiers)
 	if err != nil {
 		return fmt.Errorf("project Kubernetes snapshot: %w", err)
 	}

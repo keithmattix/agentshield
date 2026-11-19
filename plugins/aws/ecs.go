@@ -104,6 +104,8 @@ func normalizeTask(ctx context.Context, value types.Task, classifiers *classific
 	if value.TrustedExecutionSummary != nil {
 		item.IsolationMode = string(value.TrustedExecutionSummary.IsolationMode)
 		item.AttestationPolicyStatus = string(value.TrustedExecutionSummary.AttestationPolicyStatus)
+	} else if value.LaunchType == types.LaunchTypeManagedInstances {
+		item.IsolationMode = string(types.IsolationModeShared)
 	}
 	if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.ClusterARN) == "" {
 		return Task{}, fmt.Errorf("ECS task in %s requires task and cluster ARNs", region)
