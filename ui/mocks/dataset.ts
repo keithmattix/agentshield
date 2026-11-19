@@ -24,6 +24,7 @@ const SEMANTICS_KEY = 'agentshield.io/security-semantics';
 const BASE_TIME = Date.parse('2026-10-14T19:00:00.000Z');
 
 const KUBERNETES: IdentityScheme = { group: 'kubernetes.io', version: 'v1', kind: 'Object' };
+const AWS: IdentityScheme = { group: 'aws.amazon.com', version: 'v1', kind: 'Resource' };
 const DESTINATION: IdentityScheme = {
 	group: 'agentshield.io',
 	version: 'v1',
@@ -77,6 +78,7 @@ interface Source {
 const kubernetes: Source = { pluginId: 'kubernetes', sourceId: CLUSTER };
 const istio: Source = { pluginId: 'istio', sourceId: CLUSTER };
 const cilium: Source = { pluginId: 'cilium', sourceId: CLUSTER };
+const aws: Source = { pluginId: 'aws', sourceId: 'aws/aws/111111111111/us-east-1' };
 
 export interface Entity {
 	id: string;
@@ -155,6 +157,29 @@ function destination(host: string): Entity {
 		attributes: { 'network/address': `dns/${host}`, 'istio/host': host },
 		app: '',
 		evidence: `istio:${digest(`destination/${host}`).slice(0, 16)}`
+	};
+}
+
+function ecsTask(): Entity {
+	const claim: IdentityClaim = {
+		scheme: AWS,
+		authorityId: '111111111111',
+		immutableKey: 'aws/ecs/us-east-1/task/coding-agent-a'
+	};
+	return {
+		id: uuid('resource', claim.immutableKey),
+		claim,
+		kind: 'aws/ecs-task',
+		display: 'agents/coding-agent-a',
+		attributes: {
+			'aws/ecs-task-id': 'coding-agent-a',
+			'aws/ecs-cluster-arn': 'arn:aws:ecs:us-east-1:111111111111:cluster/agents',
+			'aws/ecs-isolation-mode': 'SHARED',
+			'agentshield/classification/untrusted-code': 'true',
+			'aws/region': 'us-east-1'
+		},
+		app: 'coding-agent',
+		evidence: 'aws:aws/ecs/us-east-1/tasks:coding-agent-a:upsert'
 	};
 }
 
@@ -373,7 +398,8 @@ function buildWorld() {
 		ciliumPolicy,
 		entries,
 		stripe: destination('api.stripe.com'),
-		partner: destination('export.partner-example.net')
+		partner: destination('export.partner-example.net'),
+		ecsTask: ecsTask()
 	};
 }
 
@@ -840,7 +866,8 @@ interface ProposalSpec {
 	intent:
 		| 'network.declare-ingress-isolation'
 		| 'transport.require-mutual-tls'
-		| 'gateway.prevent-route-delivery';
+		| 'gateway.prevent-route-delivery'
+		| 'workload.require-isolation';
 	target: Entity;
 }
 
@@ -882,6 +909,16 @@ function findingSpecs(world: World): FindingSpec[] {
 		.flatMap(app => world.pods.get(key(app.namespace, app.name)) ?? []);
 
 	const specs: FindingSpec[] = [
+		{
+			key: 'ecs-coding-agent-shared-runtime',
+			category: 'insufficient_isolation',
+			severity: 'high',
+			uncertainty: 'low',
+			summary:
+				'ECS coding-agent task is classified as untrusted code but runs with SHARED isolation.',
+			affected: [world.ecsTask],
+			proposals: [{ intent: 'workload.require-isolation', target: world.ecsTask }]
+		},
 		{
 			key: 'gateway-mixed-listeners',
 			category: 'new_exposure',
@@ -1286,6 +1323,7 @@ function buildContributions(): ManifestContribution[] {
 		contribution(4, cilium, 'policies', 'degraded', true, 'degraded', 4),
 		contribution(2, istio, 'mesh', 'active', true, 'healthy', 0.5),
 		contribution(3, istio, 'telemetry', 'active', true, 'healthy', 0.3),
+		contribution(6, aws, 'inventory', 'active', true, 'healthy', 0.2),
 		contribution(1, kubernetes, 'objects', 'active', true, 'healthy', 0.4)
 	];
 }
@@ -1311,7 +1349,11 @@ function buildDataset() {
 		ruleId: 'istio.service-registry',
 		evidenceIds: [`istio:${digest('service-registry/frontend').slice(0, 16)}`]
 	};
-	const resources = [...base.resources, ...mesh.resources].map(resource =>
+	const resources = [
+		...base.resources,
+		...mesh.resources,
+		resourceOf(world.ecsTask, aws, 'aws.ecs.task')
+	].map(resource =>
 		resource.id === frontend.id
 			? { ...resource, assertions: [...(resource.assertions ?? []), registry] }
 			: resource

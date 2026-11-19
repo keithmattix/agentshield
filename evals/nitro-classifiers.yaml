@@ -1,0 +1,7 @@
+classifiers:
+  untrusted-code:
+    - name: ecs-coding-agents
+      match: >
+        resource.kind == "aws/ecs-task" &&
+        "WorkloadType" in resource.metadata.tags &&
+        resource.metadata.tags["WorkloadType"] == "CodingAgent"

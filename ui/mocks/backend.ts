@@ -114,6 +114,14 @@ const providers: Record<string, Candidate[]> = {
 			actionId: 'route-detach/v1',
 			mode: 'advisory-only'
 		}
+	],
+	'workload.require-isolation': [
+		{
+			providerId: 'aws',
+			sourceId: 'aws/aws/111111111111/us-east-1',
+			actionId: 'ecs-nitro-isolated-sandbox/v1',
+			mode: 'advisory-only'
+		}
 	]
 };
 
@@ -594,11 +602,14 @@ export class FakeBackend {
 			desiredSha256: digest256(`desired/${identity}`)
 		};
 		if (plan.mode === 'advisory-only') {
+			const advisory =
+				actionId === 'ecs-nitro-isolated-sandbox/v1'
+					? 'Register a new revision of the task definition with trustedExecutionConfiguration.isolationMode set to ISOLATED_SANDBOX, redeploy the workload with that revision, and verify the replacement tasks report ISOLATED_SANDBOX.'
+					: 'Review the route attachment and detach it through the owning gateway configuration.';
 			return {
 				plan: {
 					...plan,
-					advisory:
-						'Review the route attachment and detach it through the owning gateway configuration.'
+					advisory
 				}
 			};
 		}

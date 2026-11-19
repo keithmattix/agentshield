@@ -10,6 +10,12 @@ export interface DemoScenario {
 
 export const demoScenarios: readonly DemoScenario[] = [
 	{
+		id: 'ecs-nitro-isolation',
+		name: 'ECS coding agent isolation',
+		description: 'Classify a tagged ECS coding-agent task and review the Nitro isolation advisory.',
+		finding: finding('ecs-coding-agent-shared-runtime')
+	},
+	{
 		id: 'catalog-ingress',
 		name: 'Unprotected catalog service',
 		description: 'Detect an exposed catalog workload and apply ingress isolation.',

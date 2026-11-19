@@ -74,4 +74,21 @@ describe('demo scenarios', () => {
 		expect(backend.queryFindings(new URLSearchParams()).total).toBe(0);
 		expect(events).toHaveLength(2);
 	});
+
+	it('shows the Nitro isolation scenario as advisory-only', () => {
+		const backend = new FakeBackend();
+		const finding = demoScenario('ecs-nitro-isolation').finding;
+		backend.replaceFindings([finding]);
+		const proposal = list(finding.remediations)[0];
+		if (!proposal) throw new Error('expected Nitro remediation proposal');
+		const candidates = list(backend.candidates(finding.id, proposal.id).candidates);
+		expect(candidates).toEqual([
+			expect.objectContaining({ actionId: 'ecs-nitro-isolated-sandbox/v1', mode: 'advisory-only' })
+		]);
+		const candidate = candidates[0];
+		if (!candidate) throw new Error('expected Nitro remediation candidate');
+		const prepared = backend.prepare(finding.id, proposal.id, candidate);
+		expect(prepared.plan.mode).toBe('advisory-only');
+		expect(prepared.plan.advisory).toContain('ISOLATED_SANDBOX');
+	});
 });

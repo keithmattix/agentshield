@@ -2,6 +2,8 @@
 
 These evals measure whether AgentShield catches lateral movement without alerting on benign changes. Six longitudinal campaigns pair attacks and controls for a compromised application reaching a secrets manager, a compromised hosted ML workspace build worker reading workspace secrets, and a compromised single sign-on server enumerating private source repositories.
 
+`go test ./evals -run TestNitroIsolationExperience` is an offline experience check for the ECS workload classifier, shared-runtime signal, isolation intent, and advisory Nitro plan. It makes no AWS or model calls.
+
 Each campaign records baseline and observed traffic from the disposable cluster. Scoring starts only after the exact plugin-produced observation reaches the graph; synthetic telemetry is rejected. Expected outcomes stay in the scorer and never enter the model context.
 
 The runner uses the production detection service and investigator with a compact initial packet and a pinned MCP graph view. It investigates each observed window inline, so production batching and sampling do not apply. Model-selected MCP calls are uncapped, but each result remains bounded. `untruncated` means every matching fact in that pinned view fit within the query bounds; it does not claim that provider observation is complete. Truncated context cannot support promotion.
