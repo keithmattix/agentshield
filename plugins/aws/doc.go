@@ -31,6 +31,9 @@
 // for its current addresses, with an aws-security-group-rules facet carrying
 // typed security semantics. Nitro isolation remains provider-native because the
 // graph security vocabulary has no workload-isolation or attestation domain.
+// Each ECS task also publishes a bounded resource-rule authoring context with
+// its capacity provider, launch type, isolation and attestation status, and
+// AgentShield classifications. Raw AWS tags and task payloads are excluded.
 // An initial API failure prevents readiness. After a coherent publication, a failed poll
 // republishes the last coherent input once with degraded health; recovery
 // restores healthy status.

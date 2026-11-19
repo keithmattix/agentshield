@@ -49,8 +49,8 @@ func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 		NetworkInterfaces: []NetworkInterface{{ID: "eni-1", OwnerID: "111111111111", EventID: "eni-event"}},
 		Tasks: []Task{{
 			ID: "task-1", OwnerID: "111111111111", ClusterARN: "arn:aws:ecs:us-east-1:111111111111:cluster/agents",
-			NetworkInterfaceIDs: []string{"eni-1"}, IsolationMode: "CONFIDENTIAL_SANDBOX",
-			AttestationPolicyStatus: "CONFIGURED", Classifications: []string{classification.UntrustedCode}, EventID: "task-event",
+			NetworkInterfaceIDs: []string{"eni-1"}, CapacityProviderName: "managed", LaunchType: "MANAGED_INSTANCES", IsolationMode: "CONFIDENTIAL_SANDBOX",
+			AttestationPolicyStatus: "CONFIGURED", Classifications: []string{classification.UntrustedCode, classification.SensitiveData}, EventID: "task-event",
 		}},
 	})
 	if err != nil {
@@ -62,6 +62,21 @@ func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 	}
 	if resource.Attributes[classification.AttributePrefix+classification.UntrustedCode] != "true" {
 		t.Fatalf("task attributes = %#v", resource.Attributes)
+	}
+	authoring, err := graph.DecodeResourceAuthoringContext(resource.Attributes[graph.ResourceAuthoringContextAttribute])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAuthoring := map[string]string{
+		"aws/ecs-capacity-provider":                                   "managed",
+		"aws/ecs-launch-type":                                         "MANAGED_INSTANCES",
+		"aws/ecs-isolation-mode":                                      "CONFIDENTIAL_SANDBOX",
+		"aws/ecs-attestation-policy-status":                           "CONFIGURED",
+		classification.AttributePrefix + classification.UntrustedCode: "true",
+		classification.AttributePrefix + classification.SensitiveData: "true",
+	}
+	if !reflect.DeepEqual(authoring.Attributes, wantAuthoring) || string(authoring.Context) != `{}` {
+		t.Fatalf("task authoring context = %#v", authoring)
 	}
 	if len(result.Input.Relationships) != 1 || result.Input.Relationships[0].Predicate != graph.PredicateBackedBy || result.Input.Relationships[0].Object.ImmutableKey != "aws/ec2/us-east-1/network-interface/eni-1" {
 		t.Fatalf("task relationships = %#v", result.Input.Relationships)

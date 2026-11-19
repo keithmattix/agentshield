@@ -226,6 +226,9 @@ func Project(scope ProjectionContext, snapshot Snapshot) (ProjectionResult, erro
 		for _, value := range item.Classifications {
 			attributes[classification.AttributePrefix+value] = "true"
 		}
+		if err := addTaskAuthoringContext(attributes); err != nil {
+			return ProjectionResult{}, fmt.Errorf("project ECS task %s for rule authoring: %w", item.ID, err)
+		}
 		var unresolved []string
 		for _, interfaceID := range uniqueSorted(slices.Clone(item.NetworkInterfaceIDs)) {
 			networkInterface, found := interfaceIndex[interfaceID]
@@ -248,6 +251,29 @@ func Project(scope ProjectionContext, snapshot Snapshot) (ProjectionResult, erro
 		})
 	}
 	return result, nil
+}
+
+func addTaskAuthoringContext(attributes map[string]string) error {
+	keys := []string{
+		"aws/ecs-capacity-provider",
+		"aws/ecs-launch-type",
+		"aws/ecs-isolation-mode",
+		"aws/ecs-attestation-policy-status",
+		classification.AttributePrefix + classification.UntrustedCode,
+		classification.AttributePrefix + classification.SensitiveData,
+	}
+	safe := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value := attributes[key]; value != "" {
+			safe[key] = value
+		}
+	}
+	context, err := graph.NewResourceAuthoringContext(map[string]any{}, safe)
+	if err != nil {
+		return err
+	}
+	attributes[graph.ResourceAuthoringContextAttribute] = projectkit.MustCanonicalJSON(context)
+	return nil
 }
 
 func canonicalRules(rules []Rule) []Rule {
