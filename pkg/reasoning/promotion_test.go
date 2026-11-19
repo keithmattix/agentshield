@@ -107,6 +107,7 @@ func TestNewRemediationProposalsHydrateEveryClosedIntentIndependentlyOfTargetKin
 		remediation.IntentNetworkDeclareIngressIsolation,
 		remediation.IntentTransportRequireMutualTLS,
 		remediation.IntentGatewayPreventRouteDelivery,
+		remediation.IntentWorkloadRequireIsolation,
 	} {
 		t.Run(string(intent), func(t *testing.T) {
 			packet := Packet{

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 )
 
@@ -136,6 +137,24 @@ func TestDetectNovelChangesIgnoresOrdinaryResourceAddition(t *testing.T) {
 	}}
 	if signals := DetectNovelChanges(previous, current, time.Date(2026, time.October, 7, 12, 0, 0, 0, time.UTC), DefaultConfig()); len(signals) != 0 {
 		t.Fatalf("resource addition signals = %#v", signals)
+	}
+}
+
+func TestDetectNovelChangesSignalsClassifiedECSSharedRuntime(t *testing.T) {
+	shared := graph.Resource{
+		ID: "task", Kind: "aws/ecs-task", Assertions: []graph.ResourceAssertion{{Attributes: map[string]string{
+			classification.AttributePrefix + classification.UntrustedCode: "true",
+			"aws/ecs-isolation-mode": "SHARED",
+		}}},
+	}
+	current := graph.Snapshot{Resources: []graph.Resource{shared}}
+	signals := DetectNovelChanges(graph.Snapshot{}, current, time.Date(2026, time.November, 19, 12, 0, 0, 0, time.UTC), DefaultConfig())
+	if len(signals) != 1 || signals[0].Risk != RiskHigh || !slices.Contains(signals[0].Reasons, "isolation_recommended") {
+		t.Fatalf("signals = %#v", signals)
+	}
+	previous := graph.Snapshot{Resources: []graph.Resource{{ID: "task", Kind: "aws/ecs-task", Assertions: []graph.ResourceAssertion{{Attributes: map[string]string{"aws/ecs-isolation-mode": "SHARED"}}}}}}
+	if signals := DetectNovelChanges(previous, current, time.Date(2026, time.November, 19, 12, 0, 0, 0, time.UTC), DefaultConfig()); len(signals) != 1 {
+		t.Fatalf("classification transition signals = %#v", signals)
 	}
 }
 

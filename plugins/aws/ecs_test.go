@@ -2,8 +2,10 @@ package aws
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 	awsdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
@@ -11,7 +13,13 @@ import (
 )
 
 func TestCaptureECSTasksWithNitroSandbox(t *testing.T) {
-	tasks, err := captureTasks(context.Background(), fakeECS{}, "aws", "us-east-1")
+	classifiers, err := classification.New(classification.Config{Classifiers: map[string][]classification.Rule{
+		classification.UntrustedCode: {{Name: "coding-agents", Match: `resource.metadata.tags["WorkloadType"] == "CodingAgent"`}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := captureTasks(context.Background(), fakeECS{}, classifiers, "aws", "us-east-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,6 +33,15 @@ func TestCaptureECSTasksWithNitroSandbox(t *testing.T) {
 	if len(got.NetworkInterfaceIDs) != 1 || got.NetworkInterfaceIDs[0] != "eni-1" || got.Revision == "" || got.EventID == "" {
 		t.Fatalf("task delivery fields = %#v", got)
 	}
+	if !reflect.DeepEqual(got.Classifications, []string{classification.UntrustedCode}) {
+		t.Fatalf("classifications = %v", got.Classifications)
+	}
+}
+
+func TestCaptureECSTasksDoesNotRequestTagsWithoutClassifiers(t *testing.T) {
+	if _, err := captureTasks(context.Background(), tagsForbiddenECS{fakeECS{}}, nil, "aws", "us-east-1"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
@@ -33,7 +50,7 @@ func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 		Tasks: []Task{{
 			ID: "task-1", OwnerID: "111111111111", ClusterARN: "arn:aws:ecs:us-east-1:111111111111:cluster/agents",
 			NetworkInterfaceIDs: []string{"eni-1"}, IsolationMode: "CONFIDENTIAL_SANDBOX",
-			AttestationPolicyStatus: "CONFIGURED", EventID: "task-event",
+			AttestationPolicyStatus: "CONFIGURED", Classifications: []string{classification.UntrustedCode}, EventID: "task-event",
 		}},
 	})
 	if err != nil {
@@ -43,6 +60,9 @@ func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 	if resource.Attributes["aws/ecs-isolation-mode"] != "CONFIDENTIAL_SANDBOX" || resource.Attributes["aws/ecs-attestation-policy-status"] != "CONFIGURED" {
 		t.Fatalf("task attributes = %#v", resource.Attributes)
 	}
+	if resource.Attributes[classification.AttributePrefix+classification.UntrustedCode] != "true" {
+		t.Fatalf("task attributes = %#v", resource.Attributes)
+	}
 	if len(result.Input.Relationships) != 1 || result.Input.Relationships[0].Predicate != graph.PredicateBackedBy || result.Input.Relationships[0].Object.ImmutableKey != "aws/ec2/us-east-1/network-interface/eni-1" {
 		t.Fatalf("task relationships = %#v", result.Input.Relationships)
 	}
@@ -50,6 +70,15 @@ func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 }
 
 type fakeECS struct{}
+
+type tagsForbiddenECS struct{ fakeECS }
+
+func (client tagsForbiddenECS) DescribeTasks(ctx context.Context, input *ecs.DescribeTasksInput, options ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error) {
+	if len(input.Include) != 0 {
+		return nil, context.Canceled
+	}
+	return client.fakeECS.DescribeTasks(ctx, input, options...)
+}
 
 func (fakeECS) ListClusters(context.Context, *ecs.ListClustersInput, ...func(*ecs.Options)) (*ecs.ListClustersOutput, error) {
 	return &ecs.ListClustersOutput{ClusterArns: []string{"arn:aws:ecs:us-east-1:111111111111:cluster/agents"}}, nil
@@ -72,5 +101,6 @@ func (fakeECS) DescribeTasks(context.Context, *ecs.DescribeTasksInput, ...func(*
 		TrustedExecutionSummary: &ecstypes.TrustedExecutionSummary{
 			IsolationMode: ecstypes.IsolationModeConfidentialSandbox, AttestationPolicyStatus: ecstypes.AttestationPolicyStatusConfigured,
 		},
+		Tags: []ecstypes.Tag{{Key: awsdk.String("WorkloadType"), Value: awsdk.String("CodingAgent")}},
 	}}}, nil
 }

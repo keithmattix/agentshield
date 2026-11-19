@@ -48,6 +48,7 @@ type Task struct {
 	NetworkInterfaceIDs     []string `json:"networkInterfaceIds,omitempty"`
 	IsolationMode           string   `json:"isolationMode,omitempty"`
 	AttestationPolicyStatus string   `json:"attestationPolicyStatus,omitempty"`
+	Classifications         []string `json:"classifications,omitempty"`
 	Version                 int64    `json:"version,omitempty"`
 	Revision                string   `json:"-"`
 	EventID                 string   `json:"-"`

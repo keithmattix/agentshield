@@ -62,6 +62,22 @@ It is for platform and security engineers running Kubernetes with Istio ambient,
 - **Proposes fixes behind an approval gate.** Findings can suggest a Kubernetes NetworkPolicy, CiliumNetworkPolicy, or Istio `STRICT` PeerAuthentication. A person prepares (plans and dry-runs) and approves each one, and agentshield verifies the result.
 - **Serves a web UI and HTTP API** from the same binary.
 
+### Classifying ECS workloads for isolation
+
+When ECS discovery is enabled, `--aws-classifiers-file` applies named CEL rules to task tags. Rules under one classification are OR'd together, and AgentShield uses the resolved classification plus graph context to decide whether to recommend isolation. Users do not select a provider mechanism or remediation intent.
+
+```yaml
+classifiers:
+  untrusted-code:
+    - name: ecs-coding-agents
+      match: >
+        resource.kind == "aws/ecs-task" &&
+        "WorkloadType" in resource.metadata.tags &&
+        resource.metadata.tags["WorkloadType"] == "CodingAgent"
+```
+
+The first pass supports the closed classifications `untrusted-code` and `sensitive-data`. An `untrusted-code` ECS task that reports `SHARED` execution produces an isolation signal; the AWS plugin can then present an advisory plan for moving the workload to ECS Managed Instances with Nitro `ISOLATED_SANDBOX`. It does not mutate AWS configuration.
+
 ## What needs a model
 
 Detection itself never calls a model. It runs whenever one of the two model-calling features is enabled, and nothing calls a model unless you enable it:

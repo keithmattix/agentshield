@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 	"github.com/agentshield-dev/agentshield/pkg/telemetry"
 )
@@ -36,9 +37,41 @@ func DetectNovelChanges(previous, current graph.Snapshot, observedAt time.Time, 
 	signals = append(signals, detectCommunicationPaths(previous, current, topology, observedAt, config)...)
 	signals = append(signals, detectTopologyChanges(previous, current, observedAt, config)...)
 	signals = append(signals, detectSensitiveResources(previous, current, observedAt, config)...)
+	signals = append(signals, detectIsolationNeeds(previous, current, observedAt, config)...)
 	signals = append(signals, detectWorkloadIdentityChanges(previous, current, topology, observedAt, config)...)
 	slices.SortFunc(signals, func(left, right InvestigationSignal) int { return strings.Compare(left.ID, right.ID) })
 	return slices.CompactFunc(signals, func(left, right InvestigationSignal) bool { return left.ID == right.ID })
+}
+
+func detectIsolationNeeds(previous, current graph.Snapshot, observedAt time.Time, config Config) []InvestigationSignal {
+	known := map[string]bool{}
+	for _, resource := range previous.Resources {
+		if requiresIsolation(resource) {
+			known[resource.ID] = true
+		}
+	}
+	var anchors []string
+	for _, resource := range current.Resources {
+		if !known[resource.ID] && requiresIsolation(resource) {
+			anchors = append(anchors, resource.ID)
+		}
+	}
+	if len(anchors) == 0 {
+		return nil
+	}
+	return appendScoredSignal(nil, 4, []string{"untrusted_code", "shared_runtime", "isolation_recommended"}, boundedAnchors(anchors), observedAt, config)
+}
+
+func requiresIsolation(resource graph.Resource) bool {
+	if resource.Kind != "aws/ecs-task" {
+		return false
+	}
+	for _, assertion := range resource.Assertions {
+		if assertion.Attributes[classification.AttributePrefix+classification.UntrustedCode] == "true" && assertion.Attributes["aws/ecs-isolation-mode"] == "SHARED" {
+			return true
+		}
+	}
+	return false
 }
 
 // DetectNovelTelemetry compares workload-level telemetry fingerprints and never returns telemetry IDs or evidence.

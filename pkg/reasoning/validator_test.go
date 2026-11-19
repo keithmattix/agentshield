@@ -95,6 +95,7 @@ func TestValidateKnownRemediationIntentsIndependentlyOfTargetKind(t *testing.T) 
 		remediation.IntentNetworkDeclareIngressIsolation,
 		remediation.IntentTransportRequireMutualTLS,
 		remediation.IntentGatewayPreventRouteDelivery,
+		remediation.IntentWorkloadRequireIsolation,
 	} {
 		t.Run(string(intent), func(t *testing.T) {
 			response.Assessment.RemediationSuggestions = []remediation.Suggestion{{Intent: intent, TargetEntityIDs: []string{"target"}, SupportingIDs: []string{"signal", "fact", "evidence"}}}

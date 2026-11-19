@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	awsdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -36,7 +37,7 @@ func nextPage[T any](ctx context.Context, fetch func(context.Context, ...func(*e
 	return fetch(ctx)
 }
 
-func capture(ctx context.Context, client EC2API, ecsClient ECSAPI, partition, region string) (Snapshot, error) {
+func capture(ctx context.Context, client EC2API, ecsClient ECSAPI, classifiers *classification.Engine, partition, region string) (Snapshot, error) {
 	interfaces, err := captureNetworkInterfaces(ctx, client, region)
 	if err != nil {
 		return Snapshot{}, err
@@ -49,7 +50,7 @@ func capture(ctx context.Context, client EC2API, ecsClient ECSAPI, partition, re
 	if err != nil {
 		return Snapshot{}, err
 	}
-	tasks, err := captureTasks(ctx, ecsClient, partition, region)
+	tasks, err := captureTasks(ctx, ecsClient, classifiers, partition, region)
 	if err != nil {
 		return Snapshot{}, err
 	}

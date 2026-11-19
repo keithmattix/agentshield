@@ -29,6 +29,7 @@ import (
 
 	"github.com/agentshield-dev/agentshield/internal/version"
 	"github.com/agentshield-dev/agentshield/pkg/api"
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/detector"
 	"github.com/agentshield-dev/agentshield/pkg/discovery"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
@@ -836,12 +837,22 @@ func awsDiscoveryPlugin(ctx context.Context, pluginConfig awsplugin.CLIConfig) (
 		}
 	}
 	var ecsClient awsplugin.ECSAPI
+	var classifiers *classification.Engine
+	if pluginConfig.ClassifiersFile != "" && !pluginConfig.ECS {
+		return nil, errors.New("AWS classifiers require ECS discovery")
+	}
 	if pluginConfig.ECS {
 		ecsClient = ecs.NewFromConfig(config)
+		if pluginConfig.ClassifiersFile != "" {
+			classifiers, err = classification.LoadFile(pluginConfig.ClassifiersFile)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	plugin, err := awsplugin.New(awsplugin.Config{
 		Partition: parsed.Partition, Region: pluginConfig.Region, SourceID: sourceID,
-		EC2: ec2.NewFromConfig(config), ECS: ecsClient, Subscriber: subscriber,
+		EC2: ec2.NewFromConfig(config), ECS: ecsClient, Classifiers: classifiers, Subscriber: subscriber,
 		FirehoseStreamARN: pluginConfig.FirehoseStreamARN, FirehoseAccessKey: pluginConfig.FirehoseAccessKey,
 	})
 	if err != nil {

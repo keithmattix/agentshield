@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 	"github.com/agentshield-dev/agentshield/plugins/internal/projectkit"
 )
@@ -221,6 +222,9 @@ func Project(scope ProjectionContext, snapshot Snapshot) (ProjectionResult, erro
 		)
 		if item.Version > 0 {
 			attributes["aws/ecs-version"] = strconv.FormatInt(item.Version, 10)
+		}
+		for _, value := range item.Classifications {
+			attributes[classification.AttributePrefix+value] = "true"
 		}
 		var unresolved []string
 		for _, interfaceID := range uniqueSorted(slices.Clone(item.NetworkInterfaceIDs)) {

@@ -23,12 +23,13 @@ const (
 	IntentNetworkDeclareIngressIsolation Intent = "network.declare-ingress-isolation"
 	IntentTransportRequireMutualTLS      Intent = "transport.require-mutual-tls"
 	IntentGatewayPreventRouteDelivery    Intent = "gateway.prevent-route-delivery"
+	IntentWorkloadRequireIsolation       Intent = "workload.require-isolation"
 )
 
 // Valid reports whether intent is in the supported vocabulary.
 func (intent Intent) Valid() bool {
 	switch intent {
-	case IntentNetworkDeclareIngressIsolation, IntentTransportRequireMutualTLS, IntentGatewayPreventRouteDelivery:
+	case IntentNetworkDeclareIngressIsolation, IntentTransportRequireMutualTLS, IntentGatewayPreventRouteDelivery, IntentWorkloadRequireIsolation:
 		return true
 	default:
 		return false

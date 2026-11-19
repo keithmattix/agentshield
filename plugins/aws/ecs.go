@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	awsdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
@@ -19,7 +20,7 @@ type ECSAPI interface {
 	DescribeTasks(context.Context, *ecs.DescribeTasksInput, ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error)
 }
 
-func captureTasks(ctx context.Context, client ECSAPI, partition, region string) ([]Task, error) {
+func captureTasks(ctx context.Context, client ECSAPI, classifiers *classification.Engine, partition, region string) ([]Task, error) {
 	if client == nil {
 		return nil, nil
 	}
@@ -42,7 +43,11 @@ func captureTasks(ctx context.Context, client ECSAPI, partition, region string) 
 				for start := 0; start < len(taskPage.TaskArns); start += 100 {
 					end := min(start+100, len(taskPage.TaskArns))
 					output, err := nextECSPage(ctx, func(ctx context.Context, options ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error) {
-						return client.DescribeTasks(ctx, &ecs.DescribeTasksInput{Cluster: &clusterARN, Tasks: taskPage.TaskArns[start:end]}, options...)
+						input := &ecs.DescribeTasksInput{Cluster: &clusterARN, Tasks: taskPage.TaskArns[start:end]}
+						if classifiers != nil {
+							input.Include = []types.TaskField{types.TaskFieldTags}
+						}
+						return client.DescribeTasks(ctx, input, options...)
 					})
 					if err != nil {
 						return nil, fmt.Errorf("describe ECS tasks in cluster %s: %w", clusterARN, err)
@@ -51,7 +56,7 @@ func captureTasks(ctx context.Context, client ECSAPI, partition, region string) 
 						return nil, fmt.Errorf("describe ECS tasks in cluster %s returned %d failures", clusterARN, len(output.Failures))
 					}
 					for _, value := range output.Tasks {
-						item, err := normalizeTask(value, partition, region)
+						item, err := normalizeTask(ctx, value, classifiers, partition, region)
 						if err != nil {
 							return nil, err
 						}
@@ -71,7 +76,7 @@ func nextECSPage[T any](ctx context.Context, fetch func(context.Context, ...func
 	return fetch(ctx)
 }
 
-func normalizeTask(value types.Task, partition, region string) (Task, error) {
+func normalizeTask(ctx context.Context, value types.Task, classifiers *classification.Engine, partition, region string) (Task, error) {
 	taskARN := strings.TrimSpace(awsdk.ToString(value.TaskArn))
 	parsed, err := arn.Parse(taskARN)
 	if err != nil || parsed.Partition != partition || parsed.Service != "ecs" || parsed.Region != region || !validAccountID(parsed.AccountID) {
@@ -102,6 +107,19 @@ func normalizeTask(value types.Task, partition, region string) (Task, error) {
 	}
 	if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.ClusterARN) == "" {
 		return Task{}, fmt.Errorf("ECS task in %s requires task and cluster ARNs", region)
+	}
+	tags := make(map[string]string, len(value.Tags))
+	for _, tag := range value.Tags {
+		if key := strings.TrimSpace(awsdk.ToString(tag.Key)); key != "" {
+			tags[key] = awsdk.ToString(tag.Value)
+		}
+	}
+	item.Classifications, err = classifiers.Classify(ctx, &classification.Resource{
+		Kind: "aws/ecs-task", Name: item.ID, Namespace: item.ClusterARN,
+		Metadata: &classification.Metadata{Tags: tags},
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("classify ECS task %s: %w", item.ID, err)
 	}
 	revision, err := contentRevision(item)
 	if err != nil {

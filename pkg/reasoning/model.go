@@ -498,7 +498,7 @@ func responseSchema() map[string]any {
 	stringArray := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 	remediationSuggestion := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"intent", "targetEntityIds", "supportingIds"}, "properties": map[string]any{
 		"intent": map[string]any{"type": "string", "enum": []string{
-			string(remediation.IntentNetworkDeclareIngressIsolation), string(remediation.IntentTransportRequireMutualTLS), string(remediation.IntentGatewayPreventRouteDelivery),
+			string(remediation.IntentNetworkDeclareIngressIsolation), string(remediation.IntentTransportRequireMutualTLS), string(remediation.IntentGatewayPreventRouteDelivery), string(remediation.IntentWorkloadRequireIsolation),
 		}},
 		"targetEntityIds": map[string]any{"type": "array", "minItems": 1, "maxItems": 1, "items": map[string]any{"type": "string"}},
 		"supportingIds":   map[string]any{"type": "array", "minItems": 1, "maxItems": remediation.MaxSupportingIDs, "items": map[string]any{"type": "string"}},

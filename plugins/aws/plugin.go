@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentshield-dev/agentshield/pkg/classification"
 	"github.com/agentshield-dev/agentshield/pkg/discovery"
 	"github.com/agentshield-dev/agentshield/pkg/graph"
 )
@@ -24,6 +25,7 @@ type Config struct {
 	SourceID          string
 	EC2               EC2API
 	ECS               ECSAPI
+	Classifiers       *classification.Engine
 	Subscriber        EventSubscriber
 	PollInterval      time.Duration
 	FirehoseStreamARN string
@@ -128,7 +130,7 @@ func (p *Plugin) Run(ctx context.Context, runtime discovery.Runtime) error {
 		return false, nil
 	}
 	reconcile := func() (bool, error) {
-		next, captureErr := capture(ctx, p.config.EC2, p.config.ECS, p.config.Partition, p.config.Region)
+		next, captureErr := capture(ctx, p.config.EC2, p.config.ECS, p.config.Classifiers, p.config.Partition, p.config.Region)
 		if captureErr != nil {
 			return retainDegraded(captureErr)
 		}
