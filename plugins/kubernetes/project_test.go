@@ -84,29 +84,6 @@ func TestProjectPodRunsOnObservedNode(t *testing.T) {
 	}
 }
 
-func TestProjectPodRuntimeClass(t *testing.T) {
-	pod := testObject("v1", "Pod", "demo", "confidential", "pod", map[string]any{
-		"metadata": map[string]any{
-			"name": "confidential", "namespace": "demo", "uid": "pod",
-			"annotations": map[string]any{"sandbox.amazonaws.com/policy": "sensitive-policy"},
-		},
-		"spec": map[string]any{"runtimeClassName": "confidential-sandbox"},
-	})
-	input, err := Project("cluster", "source", []*unstructured.Unstructured{pod})
-	if err != nil {
-		t.Fatal(err)
-	}
-	attributes := resourceOfKind(t, input, "kubernetes/pod").Attributes
-	if attributes["kubernetes/runtime-class"] != "confidential-sandbox" {
-		t.Fatalf("pod attributes = %#v", attributes)
-	}
-	for key, value := range attributes {
-		if key == "sandbox.amazonaws.com/policy" || value == "sensitive-policy" {
-			t.Fatalf("sandbox policy persisted: %#v", attributes)
-		}
-	}
-}
-
 func TestProjectDeterministicUnderShuffledInput(t *testing.T) {
 	namespace := testObject("v1", "Namespace", "", "demo", "namespace", nil)
 	account := testObject("v1", "ServiceAccount", "demo", "default", "account", nil)

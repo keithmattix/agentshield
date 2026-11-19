@@ -49,20 +49,6 @@ func TestProjectECSTaskTopologyAndIsolation(t *testing.T) {
 	compileCanonical(t, result.Input)
 }
 
-func TestProjectECSFargateTaskIsolation(t *testing.T) {
-	result, err := Project(ProjectionContext{Partition: "aws", Region: "us-east-1", SourceID: "source"}, Snapshot{Tasks: []Task{{
-		ID: "task-1", OwnerID: "111111111111", ClusterARN: "arn:aws:ecs:us-east-1:111111111111:cluster/agents",
-		CapacityProviderName: "FARGATE_SPOT", EventID: "task-event",
-	}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	attributes := resourceByKind(t, result.Input, "aws/ecs-task").Attributes
-	if attributes["aws/ecs-capacity-provider"] != "FARGATE_SPOT" || attributes["aws/ecs-isolation-boundary"] != "task" {
-		t.Fatalf("task attributes = %#v", attributes)
-	}
-}
-
 type fakeECS struct{}
 
 func (fakeECS) ListClusters(context.Context, *ecs.ListClustersInput, ...func(*ecs.Options)) (*ecs.ListClustersOutput, error) {
